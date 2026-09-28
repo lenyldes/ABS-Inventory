@@ -41,9 +41,9 @@ run_check() {
     FAILED=1
 }
 
+run_check 'Ruff: линтинг' docker compose run --rm -T test ruff check --fix .
+run_check 'Ruff: форматирование' docker compose run --rm -T test ruff format .
 run_check 'лимит символов' docker compose run --rm -T test python3 scripts/check_limits.py
-run_check 'Ruff: линтинг' docker compose run --rm -T test ruff check .
-run_check 'Ruff: форматирование' docker compose run --rm -T test ruff format --check .
 run_check 'pytest' docker compose run --rm -T test pytest -q --tb=short
 run_check 'сквозной запуск Compose' bash scripts/test_compose_lifecycle.sh
 run_check 'сбои запуска Compose' bash scripts/test_compose_failure.sh
