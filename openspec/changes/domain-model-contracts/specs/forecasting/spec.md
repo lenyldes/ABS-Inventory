@@ -81,7 +81,7 @@ POST `/api/forecast` SHALL рассчитывать показатели пот�
 - **Вход JSON**: `sku` (str, обязательное), `location` (str, обязательное), `as_of` (date, def today), `horizon_days` (int $\ge 1$, взаимоисключающий с `horizon_months`), `horizon_months` (int $\ge 1$, взаимоисключающий с `horizon_days`), `service_days` (int $\ge 0$, def 0).
 - **Ответ 200 OK**:
   - `sku`, `location`, `as_of`, `horizon_start` (`as_of + 1`), `horizon_end`, `days_count`;
-  - `average_daily_consumption` (Decimal(12,6)), `current_stock` (Decimal(12,3), физический остаток на `as_of`), `available_stock` (Decimal(12,3), годный остаток на `as_of`), `incoming_qty` (Decimal(12,3), ожидаемые поставки $t > as\_of$);
+  - `average_daily_consumption` (Decimal(12,6)), `forecast_consumption` (Decimal(12,3), $a \times D$), `safety_stock` (Decimal(12,3), $a \times S$), `current_stock` (Decimal(12,3), физический остаток на `as_of`), `available_stock` (Decimal(12,3), годный остаток на `as_of`), `incoming_qty` (Decimal(12,3), ожидаемые поставки $t > as\_of$);
   - `stockout_date` (date|null, первая дата нулевого остатка), `order_date` (date|null), `reorder_point` (Decimal(12,3)|null), `recommended_qty` (Decimal(12,3)), `unit_price` (Decimal(12,2)|null), `total_cost` (Decimal(12,2)|null);
   - `is_history_complete` (bool), `history_days` (int), `daily_forecast` (`[{"date": date, "consumption": Decimal, "incoming": Decimal, "expired": Decimal, "closing_stock": Decimal, "daily_deficit": Decimal}]`), `explanation` (str), `warnings` (list[str]).
   Недоступные показатели передаются как `null`, а не как нули.

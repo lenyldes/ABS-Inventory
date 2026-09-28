@@ -7,7 +7,7 @@
 ## ADDED Requirements
 
 ### Requirement: Типы движений
-Система SHALL поддерживать `receipt`, `consume`, `writeoff`, `return`, `correction`. Поступление увеличивает остаток, расход и списание уменьшают. `return` возвращает неиспользованный материал после выдачи на процедуры. `correction` задаёт изменение количества со знаком по результатам инвентаризации и требует причины. Исправление ошибочного ввода SHALL быть отдельным механизмом, не подменяемым инвентаризацией.
+Система SHALL поддерживать `receipt`, `consume`, `writeoff`, `return`, `correction`. Приход и возврат увеличивают остаток; расход и списание уменьшают. `return` возвращает неиспользованное после выдачи; `correction` отражает инвентаризационную разницу со знаком и причиной. Ошибочный ввод исправляется отдельным механизмом.
 
 #### Scenario: Инвентаризационное расхождение
 - **WHEN** учтено 10 единиц, а фактически найдено 8
@@ -25,11 +25,15 @@
 - **THEN** успешно проводится не более одного, второй получает отказ без частичного списания.
 
 ### Requirement: Возврат по исходной выдаче
-Возврат SHALL ссылаться на конкретную строку исходного расхода и возвращать количество в исходную партию с её ценой и сроком годности. Совокупное возвращённое количество SHALL не превышать выданное. Возврат поставщику не входит в объём.
+Возврат SHALL передавать `parent_movement_id` расхода и `parent_allocation_id` его строки. После проверки связи количество возвращается в исходную партию с прежней ценой и сроком. Суммарный возврат по строке SHALL не превышать выдачу. Возврат поставщику вне объёма.
 
 #### Scenario: Частичный возврат
 - **WHEN** из выданных 2 литров возвращено 0,5
 - **THEN** остаток исходной партии увеличивается на 0,5; повторный возврат ограничен оставшимися 1,5 литра.
+
+#### Scenario: Возврат из расхода по двум партиям
+- **WHEN** исходный расход распределён по двум партиям и возврат указывает `parent_movement_id` и `parent_allocation_id` одной из его строк
+- **THEN** система пополняет только партию этой строки и ограничивает суммарный возврат количеством, выданным из неё.
 
 #### Scenario: Возврат просроченного
 - **WHEN** возвращён материал из партии, срок которой уже истёк
@@ -47,7 +51,7 @@
 - **THEN** операция успешно регистрируется, а история сохраняет аннулированный документ.
 
 ### Requirement: Прошлые даты и историческая обеспеченность
-Система SHALL разрешать прошлые даты ($\le today$) и хранить дату операции и время регистрации `created_at`. Порядок внутри даты: `receipt`/`return` -> `consume`/`writeoff` -> `correction`; внутри типа — по `created_at` (и `id`). Историческая обеспеченность проверяется на каждый день и движение от даты операции по `today`. Будущая дата отклоняется с `422`. Поздний приход не перераспределяет прежние расходы; выявленное отступление от FEFO отображается пользователю.
+Система SHALL разрешать прошлые даты ($\le today$) и хранить дату операции и `created_at`. Порядок внутри даты: `receipt`/`return` -> `consume`/`writeoff` -> `correction`; внутри типа — по `created_at`, затем `id`. Остаток проверяется после каждого движения до `today`. Будущая дата даёт `422`. Поздний приход не перераспределяет расходы; отклонение от FEFO показывается пользователю.
 
 #### Scenario: Забытый приход без нарушения обеспеченности
 - **WHEN** поступление вносится задним числом и остатки положительны
@@ -66,21 +70,13 @@
 
 | Тип | Количество | Партия во входном запросе | Номер документа | Причина (`reason`) | Связанная операция |
 |---|---|---|---|---|---|
-| `receipt` | `> 0` | `batch_number`, `expiry_date` (nullable), `unit_price ≥ 0` | Обязателен | Не требуется | Опционально `purchase_order_id` |
+| `receipt` | `> 0` | `batch_number`, `expiry_date` (nullable), `unit_price ≥ 0` | Обязателен | Не требуется | Опционально `purchase_order_id`; `supplier_id` для прихода без заказа |
 | `consume` | `> 0` | Запрещена (распределяется по FEFO) | Обязателен | Не требуется | Не требуется |
 | `writeoff` | `> 0` | Обязательна партия (`batch_id`) | Обязателен | Обязательна | Не требуется |
-| `return` | `> 0` (≤ выданного) | Запрещена (берётся из строки расхода) | Обязателен | Опциональна | Обязательна `parent_movement_id` |
+| `return` | `> 0` (≤ выданного по строке) | Запрещена (берётся из строки расхода) | Обязателен | Опциональна | Обязательны `parent_movement_id` и `parent_allocation_id` |
 | `correction` | `!= 0` | Обязательна партия (`batch_id`) | Обязателен | Обязательна | Не требуется |
 
 Количество $\le 0$ (для `correction` $= 0$) и нарушение состава обязательных полей SHALL отклоняться с `422`.
-
-#### Scenario: Списание без указания партии или причины
-- **WHEN** передана операция `writeoff` без `batch_id` или без `reason`
-- **THEN** система возвращает `422` с ошибкой валидации обязательных полей.
-
-#### Scenario: Нулевая инвентаризационная корректировка
-- **WHEN** передана операция `correction` с количеством 0
-- **THEN** система возвращает `422`.
 
 #### Scenario: Превышение возврата над выдачей
 - **WHEN** возврат превышает невозвращённый остаток по строке исходного расхода
@@ -97,12 +93,12 @@
 Система SHALL предоставлять складские HTTP-эндпоинты:
 
 1. **POST `/api/movements`** — регистрация движения по таблице валидации:
-   - Вход JSON: `operation_date` (date $\le today$), `sku` (str), `location` (str), `type` (enum), `quantity` (Decimal(12,3)), `doc_number` (str, 1–64, уникален на объекте), `batch_number` (str|null), `expiry_date` (date|null), `unit_price` (Decimal(12,2)|null), `batch_id` (int|null), `reason` (str|null), `parent_movement_id` (int|null), `purchase_order_id` (int|null).
-   - Ответ 201 Created: `{"id": int, "operation_date": date, "sku": str, "location": str, "type": str, "quantity": Decimal, "doc_number": str, "current_stock": Decimal, "available_stock": Decimal, "allocations": [{"batch_id": int, "quantity": Decimal, "unit_price": Decimal}]}` (`allocations` для `consume`).
-   - Ошибки: `400` (невалидный JSON), `404` (не найден `sku`, `location`, `batch_id`, `parent_movement_id`), `409` (дубликат `doc_number`), `422` (будущая дата, $\le 0$ или неделимое количество, нехватка остатка, нарушение истории, возврат > расхода).
+   - Вход JSON: `operation_date` (date $\le today$), `sku` (str), `location` (str), `type` (enum), `quantity` (Decimal(12,3)), `doc_number` (str, 1–64, уникален на объекте), `batch_number` (str|null), `expiry_date` (date|null), `unit_price` (Decimal(12,2)|null), `batch_id` (int|null), `reason` (str|null), `parent_movement_id` (int|null), `parent_allocation_id` (int|null), `purchase_order_id` (int|null), `supplier_id` (str|null; для `receipt` без заказа).
+   - Ответ 201 Created: `{"id": int, "operation_date": date, "sku": str, "location": str, "type": str, "quantity": Decimal, "doc_number": str, "current_stock": Decimal, "available_stock": Decimal, "allocations": [{"id": int, "batch_id": int, "quantity": Decimal, "unit_price": Decimal}]}` (`allocations` для `consume`).
+   - Ошибки: `400` (невалидный JSON), `404` (не найден `sku`, `location`, `batch_id`, `parent_movement_id`, `parent_allocation_id`, `purchase_order_id`, `supplier_id`), `409` (дубликат `doc_number`), `422` (будущая дата, $\le 0$ или неделимое количество, нехватка остатка, нарушение истории, несоответствие исходной строки расходу, возврат > расхода по строке).
 2. **GET `/api/movements`** — журнал движений:
    - Query: `sku`, `location`, `type`, `date_from`, `date_to`, `sort_by` (`operation_date`|`created_at`, def `operation_date`), `sort_order` (`asc`|`desc`, def `desc`), `limit` (1..100, def 50), `offset` ($\ge 0$, def 0).
-   - Ответ 200 OK: `{"items": [{"id": int, "operation_date": date, "created_at": datetime, "sku": str, "location": str, "type": str, "quantity": Decimal, "doc_number": str, "reason": str|null, "allocations": [...]}], "total": int, "limit": int, "offset": int}`.
+   - Ответ 200 OK: `{"items": [{"id": int, "operation_date": date, "created_at": datetime, "sku": str, "location": str, "type": str, "quantity": Decimal, "doc_number": str, "reason": str|null, "allocations": [{"id": int, "batch_id": int, "quantity": Decimal, "unit_price": Decimal}]}], "total": int, "limit": int, "offset": int}`.
    - Ошибки: `400` (`limit` вне [1, 100], `offset < 0`), `422` (`date_from > date_to`).
 3. **GET `/api/stock`** — сводные остатки:
    - Query: `location`, `category`, `sku`, `as_of` (date, def today), `limit` (1..100, def 50), `offset` ($\ge 0$, def 0).
@@ -115,14 +111,6 @@
 #### Scenario: Проверки запроса движения
 - **WHEN** передан неизвестный SKU или объект в POST `/api/movements`
 - **THEN** система возвращает `404`.
-
-#### Scenario: Конфликт номера документа
-- **WHEN** передан `doc_number`, уже зарегистрированный среди активных на объекте
-- **THEN** система возвращает `409`.
-
-#### Scenario: Неположительный приход или расход
-- **WHEN** для `receipt` или `consume` передано количество ≤ 0
-- **THEN** система возвращает `422` без изменения данных.
 
 #### Scenario: Детализация товара
 - **WHEN** запрашивается известный SKU с несколькими партиями на разных объектах
