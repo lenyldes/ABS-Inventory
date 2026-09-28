@@ -1,12 +1,13 @@
 """HTTP-интеграционные сценарии эндпоинта GET /api/alerts: сортировка, пагинация, горизонты."""
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core import timezone as app_timezone
 from app.inventory.operations import register_consume, register_receipt
 from app.main import app
 from app.models.catalog import Item, Location, Supplier
@@ -202,3 +203,40 @@ def test_get_alerts_incomplete_history_before_first_receipt(
     assert alert["location"] == location.code
     assert alert["metrics"]["history_days"] == 0
     assert alert["metrics"]["first_movement_date"] is None
+
+
+def test_get_alerts_default_as_of_uses_moscow_date(
+    client: TestClient,
+    db_session: Session,
+    base_catalog: tuple[Item, Location, Supplier],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """На границе суток UTC дата по умолчанию соответствует Москве."""
+    item, location, supplier = base_catalog
+    fixed_utc = datetime(2026, 9, 27, 21, 30, tzinfo=UTC)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            assert tz == app_timezone.MOSCOW_TZ
+            return fixed_utc.astimezone(tz)
+
+    monkeypatch.setattr(app_timezone, "datetime", FixedDateTime)
+    make_purchase_order(
+        db_session,
+        item_id=item.id,
+        location_id=location.id,
+        supplier_id=supplier.id,
+        doc_number="PO-DEFAULT-AS-OF",
+        expected_date=date(2026, 9, 29),
+        expected_qty=Decimal("10.000"),
+    )
+
+    response = client.get(
+        "/api/alerts",
+        params={"sku": item.sku, "location": location.code, "type": "incomplete_history"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["as_of"] == "2026-09-28"

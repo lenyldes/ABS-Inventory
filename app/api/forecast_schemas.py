@@ -2,9 +2,13 @@
 
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
+
+AverageQuantity = Annotated[Decimal, Field(max_digits=12, decimal_places=6)]
+Quantity = Annotated[Decimal, Field(max_digits=12, decimal_places=3)]
+Money = Annotated[Decimal, Field(max_digits=12, decimal_places=2)]
 
 
 class ForecastRequest(BaseModel):
@@ -81,19 +85,19 @@ class ForecastResponse(BaseModel):
     horizon_end: date
     days_count: int
 
-    average_daily_consumption: Decimal
-    forecast_consumption: Decimal
-    safety_stock: Decimal
-    current_stock: Decimal
-    available_stock: Decimal
-    incoming_qty: Decimal
+    average_daily_consumption: AverageQuantity
+    forecast_consumption: Quantity
+    safety_stock: Quantity
+    current_stock: Quantity
+    available_stock: Quantity
+    incoming_qty: Quantity
 
     stockout_date: date | None = None
     order_date: date | None = None
-    reorder_point: Decimal | None = None
-    recommended_qty: Decimal
-    unit_price: Decimal | None = None
-    total_cost: Decimal | None = None
+    reorder_point: Quantity | None = None
+    recommended_qty: Quantity
+    unit_price: Money | None = None
+    total_cost: Money | None = None
 
     is_history_complete: bool
     history_days: int
