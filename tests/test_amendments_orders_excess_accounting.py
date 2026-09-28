@@ -50,7 +50,7 @@ def test_order_recalculation_rejects_excess_receipt(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    """Превышение ожидаемого объёма заказа блокирует подтверждение с 422."""
+    """Превышение заказа видно в preview и блокирует подтверждение с 422."""
     item, loc, po = _setup_po_environment(db_session, Decimal("10.000"))
 
     rec_res = register_receipt(
@@ -88,6 +88,15 @@ def test_order_recalculation_rejects_excess_receipt(
     )
     assert prev_resp.status_code == 200
     prev_data = prev_resp.json()
+    assert prev_data["can_apply"] is False
+    assert len(prev_data["blockers"]) == 1
+    blocker = prev_data["blockers"][0]
+    assert blocker["code"] == "EXCESS_ORDER_RECEIPT"
+    assert blocker["details"] == {
+        "purchase_order_id": po.id,
+        "expected_qty": "10.000",
+        "received_qty": "15.000",
+    }
 
     conf_resp = client.post(
         "/api/amendments/confirm",
@@ -98,7 +107,9 @@ def test_order_recalculation_rejects_excess_receipt(
         },
     )
     assert conf_resp.status_code == 422
-    assert conf_resp.json()["code"] == "EXCESS_ORDER_RECEIPT"
+    error = conf_resp.json()
+    assert error["code"] == "dependency_violation"
+    assert error["details"]["blockers"][0]["code"] == "EXCESS_ORDER_RECEIPT"
 
     # Заказ не изменился
     db_po = db_session.get(PurchaseOrder, po.id)

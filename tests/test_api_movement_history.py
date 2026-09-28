@@ -136,3 +136,84 @@ def test_get_movement_history_not_found_http(client: TestClient) -> None:
     assert resp.status_code == 404
     data = resp.json()
     assert data["code"] == "NOT_FOUND"
+
+
+def test_receipt_relocation_preview_and_history(
+    client: TestClient,
+    db_session: Session,
+    catalog_setup: tuple[Item, Location],
+) -> None:
+    """Перенос прихода показывает остатки обоих объектов и смену объекта в истории."""
+    item, old_location = catalog_setup
+    new_location = Location(code="LOC-API-HIST-02", name="SPA Восток")
+    db_session.add(new_location)
+    db_session.commit()
+
+    receipt = register_receipt(
+        db_session,
+        item=item,
+        location=old_location,
+        operation_date=date.today(),
+        quantity=Decimal("10.000"),
+        doc_number="DOC-REC-RELOCATE",
+        batch_number="BATCH-RELOCATE",
+        expiry_date=date.today() + timedelta(days=90),
+        unit_price=Decimal("100.00"),
+    ).movement
+    db_session.commit()
+
+    preview_response = client.post(
+        "/api/amendments/preview",
+        json={
+            "reason": "Перенос прихода",
+            "operations": [
+                {
+                    "movement_id": receipt.id,
+                    "action": "update",
+                    "expected_version": 1,
+                    "fields": {"location": new_location.code},
+                }
+            ],
+        },
+    )
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    assert preview["can_apply"] is True
+    assert preview["stock_impact"] == [
+        {
+            "sku": item.sku,
+            "location": old_location.code,
+            "batch_id": receipt.batch_id,
+            "current_stock_before": "10.000",
+            "current_stock_after": "0.000",
+            "available_stock_before": "10.000",
+            "available_stock_after": "0.000",
+        },
+        {
+            "sku": item.sku,
+            "location": new_location.code,
+            "batch_id": receipt.batch_id,
+            "current_stock_before": "0.000",
+            "current_stock_after": "10.000",
+            "available_stock_before": "0.000",
+            "available_stock_after": "10.000",
+        },
+    ]
+
+    confirm_response = client.post(
+        "/api/amendments/confirm",
+        json={
+            "preview_id": preview["preview_id"],
+            "version_signature": preview["version_signature"],
+            "reason": "Перенос прихода",
+        },
+    )
+    assert confirm_response.status_code == 200
+
+    history_response = client.get(f"/api/movements/{receipt.id}/history")
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert history["versions"][1]["changes"]["location_id"] == {
+        "old": old_location.id,
+        "new": new_location.id,
+    }

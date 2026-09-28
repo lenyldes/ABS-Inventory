@@ -2,8 +2,9 @@
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.inventory.amendments_domain import AmendmentOperation
@@ -30,6 +31,7 @@ class LoadedAmendmentState:
     movements: tuple[Movement, ...]
     batches: tuple[Batch, ...]
     purchase_orders: tuple[PurchaseOrder, ...]
+    purchase_order_quantities: dict[int, tuple[Decimal, Decimal]]
     movement_snapshots: tuple[MovementSnapshot, ...]
     batch_snapshots: tuple[BatchSnapshot, ...]
     sku_by_item_id: dict[int, str]
@@ -146,6 +148,16 @@ def load_amendment_state(
         )
         locked_pos = list(session.execute(stmt).scalars().all())
 
+    purchase_order_quantities: dict[int, tuple[Decimal, Decimal]] = {}
+    for po in locked_pos:
+        received_stmt = select(func.coalesce(func.sum(Movement.quantity), 0)).where(
+            Movement.purchase_order_id == po.id,
+            Movement.status == "active",
+            Movement.type == "receipt",
+        )
+        received = Decimal(str(session.execute(received_stmt).scalar_one()))
+        purchase_order_quantities[po.id] = (Decimal(str(po.expected_qty)), received)
+
     item_ids = {p[0] for p in pairs}
     location_ids = {p[1] for p in pairs}
     items = session.execute(select(Item).where(Item.id.in_(item_ids))).scalars().all()
@@ -182,6 +194,7 @@ def load_amendment_state(
         movements=tuple(unique_movements),
         batches=tuple(unique_batches),
         purchase_orders=tuple(locked_pos),
+        purchase_order_quantities=purchase_order_quantities,
         movement_snapshots=tuple(movement_snapshots),
         batch_snapshots=tuple(batch_snapshots),
         sku_by_item_id=sku_by_item_id,

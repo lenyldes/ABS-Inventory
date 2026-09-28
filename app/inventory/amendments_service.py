@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.timezone import today_in_moscow
 from app.inventory.amendments_domain import (
+    AmendmentBlocker,
     AmendmentOperation,
     SimulationResult,
     StockImpact,
@@ -38,6 +39,7 @@ def create_amendment_preview(
         sku_by_item_id=state.sku_by_item_id,
         code_by_location_id=state.code_by_location_id,
         location_resolver=state.location_resolver,
+        purchase_order_quantities=state.purchase_order_quantities,
     )
 
     preview_id = str(uuid.uuid4())
@@ -79,6 +81,7 @@ def simulate_amendment_set(
     sku_by_item_id: dict[int, str] | None = None,
     code_by_location_id: dict[int, str] | None = None,
     location_resolver: Callable[[str], int | None] | None = None,
+    purchase_order_quantities: dict[int, tuple[Decimal, Decimal]] | None = None,
 ) -> SimulationResult:
     """Выполняет чистую симуляцию набора исправлений на снимках данных склада."""
     if not operations:
@@ -104,6 +107,44 @@ def simulate_amendment_set(
         operations=operations,
         today=as_of,
     )
+
+    if purchase_order_quantities:
+        original_by_id = {m.id: m for m in movements}
+        projected_by_id = {m.id: m for m in proj_movements}
+        for po_id, (expected, received) in sorted(purchase_order_quantities.items()):
+            projected_received = received
+            for movement_id in original_by_id.keys() | projected_by_id.keys():
+                original = original_by_id.get(movement_id)
+                projected = projected_by_id.get(movement_id)
+                if (
+                    original
+                    and original.purchase_order_id == po_id
+                    and original.type == "receipt"
+                    and original.status == "active"
+                ):
+                    projected_received -= original.quantity
+                if (
+                    projected
+                    and projected.purchase_order_id == po_id
+                    and projected.type == "receipt"
+                    and projected.status == "active"
+                ):
+                    projected_received += projected.quantity
+            if projected_received > expected:
+                blockers.append(
+                    AmendmentBlocker(
+                        code="EXCESS_ORDER_RECEIPT",
+                        message=(
+                            f"Принятое количество {projected_received} превышает "
+                            f"ожидаемый объем заказа {expected}"
+                        ),
+                        details={
+                            "purchase_order_id": po_id,
+                            "expected_qty": str(expected),
+                            "received_qty": str(projected_received),
+                        },
+                    )
+                )
 
     # Определяем затронутые партии для расчёта изменения остатков
     touched_batch_ids: set[int] = set()
@@ -143,8 +184,10 @@ def simulate_amendment_set(
 
     stock_impacts: list[StockImpact] = []
     for b_id in sorted(touched_batch_ids):
-        b = proj_b_map.get(b_id) or orig_b_map.get(b_id)
-        if not b:
+        before_batch = orig_b_map.get(b_id)
+        after_batch = proj_b_map.get(b_id)
+        b = after_batch or before_batch
+        if b is None:
             continue
 
         st_b = stocks_before.get(b_id)
@@ -155,18 +198,41 @@ def simulate_amendment_set(
         curr_after = st_a.current_quantity if st_a else _ZERO
         avail_after = st_a.available_quantity if st_a else _ZERO
 
-        if curr_before != curr_after or avail_before != avail_after:
-            sku = (sku_by_item_id or {}).get(b.item_id, f"ITEM-{b.item_id}")
-            loc = (code_by_location_id or {}).get(b.location_id, f"LOC-{b.location_id}")
+        moved = (
+            before_batch is not None
+            and after_batch is not None
+            and before_batch.location_id != after_batch.location_id
+        )
+        if moved:
+            location_quantities = (
+                (before_batch.location_id, curr_before, _ZERO, avail_before, _ZERO),
+                (after_batch.location_id, _ZERO, curr_after, _ZERO, avail_after),
+            )
+        else:
+            location_quantities = (
+                (b.location_id, curr_before, curr_after, avail_before, avail_after),
+            )
+
+        sku = (sku_by_item_id or {}).get(b.item_id, f"ITEM-{b.item_id}")
+        for (
+            location_id,
+            location_before,
+            location_after,
+            available_before,
+            available_after,
+        ) in location_quantities:
+            if location_before == location_after and available_before == available_after:
+                continue
+            loc = (code_by_location_id or {}).get(location_id, f"LOC-{location_id}")
             stock_impacts.append(
                 StockImpact(
                     sku=sku,
                     location=loc,
                     batch_id=b_id,
-                    current_stock_before=curr_before,
-                    current_stock_after=curr_after,
-                    available_stock_before=avail_before,
-                    available_stock_after=avail_after,
+                    current_stock_before=location_before,
+                    current_stock_after=location_after,
+                    available_stock_before=available_before,
+                    available_stock_after=available_after,
                 )
             )
 

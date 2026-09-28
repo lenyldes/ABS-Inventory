@@ -137,6 +137,7 @@ def confirm_amendment_set(
         sku_by_item_id=state.sku_by_item_id,
         code_by_location_id=state.code_by_location_id,
         location_resolver=state.location_resolver,
+        purchase_order_quantities=state.purchase_order_quantities,
     )
 
     if not sim_result.can_apply:

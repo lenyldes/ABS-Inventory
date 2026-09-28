@@ -62,7 +62,7 @@ def calculate_changes(
     changes: dict[str, Any] = {}
     all_keys = sorted(set(prev_snapshot.keys()) | set(curr_snapshot.keys()))
     for key in all_keys:
-        if key in ("id", "item_id", "location_id", "type"):
+        if key in ("id", "item_id", "type"):
             continue
         prev_val = prev_snapshot.get(key)
         curr_val = curr_snapshot.get(key)
