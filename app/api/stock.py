@@ -17,6 +17,7 @@ from app.api.stock_schemas import (
 )
 from app.core.database import get_db
 from app.core.timezone import today_in_moscow
+from app.forecasting.consumption import calculate_consumption_metrics
 from app.inventory.calculator import calculate_stock_balance
 from app.inventory.common_validation import load_history
 from app.inventory.exceptions import (
@@ -94,6 +95,9 @@ def get_stock_summary(
     for item, loc in pairs:
         _, _, b_snaps, m_snaps = load_history(db, item.id, loc.id)
         balance = calculate_stock_balance(b_snaps, m_snaps, as_of=calc_date)
+        consumption = calculate_consumption_metrics(
+            m_snaps, as_of=calc_date, available_stock=balance.available_stock
+        )
 
         items_list.append(
             StockSummaryItem(
@@ -105,8 +109,8 @@ def get_stock_summary(
                 current_stock=balance.current_stock,
                 available_stock=balance.available_stock,
                 expired_stock=balance.expired_stock,
-                average_daily_consumption=None,
-                days_of_stock=None,
+                average_daily_consumption=consumption.average_daily_consumption,
+                days_of_stock=consumption.days_of_stock,
                 nearest_expiry_date=balance.nearest_expiry_date,
             )
         )

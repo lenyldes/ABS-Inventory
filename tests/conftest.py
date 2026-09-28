@@ -18,6 +18,8 @@ from tests.safety import ensure_truncate_safety, validate_test_database_safety
 # Фиксируем исходный DATABASE_URL окружения до любых возможных замен тестовыми фикстурами
 _INITIAL_DATABASE_URL = os.getenv("DATABASE_URL")
 
+pytest_plugins = ("tests.forecasting_fixtures",)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_database() -> None:
