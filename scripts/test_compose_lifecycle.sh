@@ -23,7 +23,14 @@ until curl -s "http://localhost:${PORT}/health" | grep -q '"status":"healthy"'; 
 done
 echo "Сервис успешно ответил healthy 200 на чистой БД."
 
+echo "Проверка складского API по стартовым сидам..."
+curl -s "http://localhost:${PORT}/api/stock?location=MS-01" | grep -q '"sku":"OIL-001"'
+curl -s "http://localhost:${PORT}/api/stock/OIL-001?location=MS-01" | grep -q '"batch_number":"SEED-BATCH-OIL-01"'
+curl -s "http://localhost:${PORT}/api/movements" | grep -q '"doc_number":"SEED-REC-001"'
+echo "Складской API успешно отдал корректные данные по стартовым движениям."
+
 echo "=== [3/5] Добавление проверочной пользовательской записи ==="
+
 COMPOSE_PROJECT_NAME="${PROJECT_NAME}" docker compose exec -T app python -c '
 from app.models.catalog import Item
 from app.core.database import get_session_factory

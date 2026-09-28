@@ -87,3 +87,38 @@ SEED_CONDITIONS = [
         "is_primary": True,
     },
 ]
+
+SEED_MOVEMENTS = [
+    {
+        "doc_number": "SEED-REC-001",
+        "sku": "OIL-001",
+        "location": "MS-01",
+        "type": "receipt",
+        "quantity": Decimal("20.000"),
+        "batch_number": "SEED-BATCH-OIL-01",
+        "days_ago": 5,
+        "expiry_days_ahead": 180,
+        "unit_price": Decimal("1250.00"),
+        "supplier_id": "SUP-AROMA",
+    },
+    {
+        "doc_number": "SEED-CONS-001",
+        "sku": "OIL-001",
+        "location": "MS-01",
+        "type": "consume",
+        "quantity": Decimal("4.000"),
+        "days_ago": 2,
+    },
+    {
+        "doc_number": "SEED-REC-002",
+        "sku": "SCRUB-001",
+        "location": "MS-01",
+        "type": "receipt",
+        "quantity": Decimal("15.000"),
+        "batch_number": "SEED-BATCH-SCRUB-01",
+        "days_ago": 4,
+        "expiry_days_ahead": 90,
+        "unit_price": Decimal("850.00"),
+        "supplier_id": "SUP-BEAUTY",
+    },
+]
