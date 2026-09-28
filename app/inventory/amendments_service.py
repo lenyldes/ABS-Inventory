@@ -1,8 +1,11 @@
 """Сервис симуляции и расчёта наборов исправлений склада."""
 
+import uuid
 from collections.abc import Callable, Sequence
 from datetime import date
 from decimal import Decimal
+
+from sqlalchemy.orm import Session
 
 from app.core.timezone import today_in_moscow
 from app.inventory.amendments_domain import (
@@ -11,12 +14,60 @@ from app.inventory.amendments_domain import (
     StockImpact,
 )
 from app.inventory.amendments_simulation import apply_amendments_to_snapshots
+from app.inventory.amendments_state import load_amendment_state
 from app.inventory.amendments_validation import validate_projected_history
 from app.inventory.calculator import calculate_batch_stocks
 from app.inventory.domain import BatchSnapshot, MovementSnapshot
 from app.inventory.exceptions import AmendmentValidationError
+from app.models.amendments import AmendmentEntry, AmendmentSet
 
 _ZERO = Decimal("0.000")
+
+
+def create_amendment_preview(
+    session: Session,
+    reason: str,
+    operations: Sequence[AmendmentOperation],
+) -> tuple[str, str, SimulationResult]:
+    """Строит предварительный просмотр набора исправлений и сохраняет его в БД."""
+    state = load_amendment_state(session, operations)
+    sim_result = simulate_amendment_set(
+        batches=state.batch_snapshots,
+        movements=state.movement_snapshots,
+        operations=operations,
+        sku_by_item_id=state.sku_by_item_id,
+        code_by_location_id=state.code_by_location_id,
+        location_resolver=state.location_resolver,
+    )
+
+    preview_id = str(uuid.uuid4())
+    amendment_set = AmendmentSet(
+        amendment_id=preview_id,
+        reason=reason,
+        status="preview",
+        version_signature=state.version_signature,
+        preview_data={
+            "can_apply": sim_result.can_apply,
+            "stock_impact": [s.to_dict() for s in sim_result.stock_impact],
+            "affected_operations": list(sim_result.affected_operations),
+            "blockers": [b.to_dict() for b in sim_result.blockers],
+        },
+    )
+    session.add(amendment_set)
+    session.flush()
+
+    for op in operations:
+        entry = AmendmentEntry(
+            amendment_set_id=amendment_set.id,
+            movement_id=op.movement_id,
+            action=op.action,
+            expected_version=op.expected_version,
+            details=op.raw_fields,
+        )
+        session.add(entry)
+    session.commit()
+
+    return preview_id, state.version_signature, sim_result
 
 
 def simulate_amendment_set(

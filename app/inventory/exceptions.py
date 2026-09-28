@@ -164,3 +164,35 @@ class AmendmentValidationError(InventoryError):
             code=code,
             details=details or {},
         )
+
+
+class AmendmentBadRequestError(InventoryError):
+    """Некорректный запрос на предварительный просмотр или применение исправлений."""
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "BAD_REQUEST",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            details=details or {},
+        )
+
+
+class StalePreviewError(InventoryError):
+    """Предварительный просмотр устарел из-за изменений в складе."""
+
+    def __init__(
+        self,
+        message: str = "Предварительный просмотр устарел из-за изменений склада",
+        code: str = "stale_preview",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            details=details or {},
+        )

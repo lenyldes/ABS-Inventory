@@ -47,6 +47,7 @@ run_check 'лимит символов' docker compose run --rm -T test python3 
 run_check 'pytest' docker compose run --rm -T test pytest -q --tb=short
 run_check 'сквозной запуск Compose' bash scripts/test_compose_lifecycle.sh
 run_check 'сбои запуска Compose' bash scripts/test_compose_failure.sh
+run_check 'сквозной сценарий исправлений' bash scripts/test_amendments_e2e.sh
 
 cleanup
 
