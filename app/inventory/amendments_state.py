@@ -38,6 +38,7 @@ class LoadedAmendmentState:
     code_by_location_id: dict[int, str]
     location_resolver: Callable[[str], int | None]
     version_signature: str
+    active_location_docs: tuple[tuple[int, int, str], ...] = ()
 
 
 def find_affected_pairs_and_orders(
@@ -189,6 +190,16 @@ def load_amendment_state(
         operations=operations,
     )
 
+    active_docs_stmt = select(Movement.id, Movement.location_id, Movement.doc_number).where(
+        Movement.location_id.in_(location_ids),
+        Movement.status == "active",
+    )
+    active_location_docs = tuple(
+        (int(r[0]), int(r[1]), str(r[2]))
+        for r in session.execute(active_docs_stmt).all()
+        if r[0] is not None
+    )
+
     return LoadedAmendmentState(
         pairs=tuple(pairs),
         movements=tuple(unique_movements),
@@ -201,4 +212,5 @@ def load_amendment_state(
         code_by_location_id=code_by_location_id,
         location_resolver=location_resolver,
         version_signature=signature,
+        active_location_docs=active_location_docs,
     )

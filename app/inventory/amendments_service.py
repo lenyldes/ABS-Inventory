@@ -40,6 +40,7 @@ def create_amendment_preview(
         code_by_location_id=state.code_by_location_id,
         location_resolver=state.location_resolver,
         purchase_order_quantities=state.purchase_order_quantities,
+        active_location_docs=state.active_location_docs,
     )
 
     preview_id = str(uuid.uuid4())
@@ -82,6 +83,7 @@ def simulate_amendment_set(
     code_by_location_id: dict[int, str] | None = None,
     location_resolver: Callable[[str], int | None] | None = None,
     purchase_order_quantities: dict[int, tuple[Decimal, Decimal]] | None = None,
+    active_location_docs: Sequence[tuple[int, int, str]] | None = None,
 ) -> SimulationResult:
     """Выполняет чистую симуляцию набора исправлений на снимках данных склада."""
     if not operations:
@@ -106,6 +108,7 @@ def simulate_amendment_set(
         original_movements=movements,
         operations=operations,
         today=as_of,
+        active_location_docs=active_location_docs,
     )
 
     if purchase_order_quantities:

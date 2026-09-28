@@ -177,6 +177,39 @@ def test_duplicate_doc_number_on_same_location_blocks_amendment() -> None:
     assert any(bl.code == "DUPLICATE_DOC_NUMBER" for bl in res.blockers)
 
 
+def test_duplicate_doc_number_with_external_active_movement_blocks_amendment() -> None:
+    """Номер документа, занятый активным движением другого товара на объекте, отклоняется."""
+    b1 = _make_batch(1, doc_num="DOC-A")
+    rec1 = MovementSnapshot(
+        id=1,
+        operation_date=date(2026, 9, 1),
+        created_at=datetime(2026, 9, 1, 10, 0),
+        item_id=1,
+        location_id=1,
+        type="receipt",
+        quantity=Decimal("5.000"),
+        doc_number="DOC-A",
+        batch_id=1,
+    )
+    external_docs = [(99, 1, "DOC-EXT")]
+
+    op = AmendmentOperation(
+        movement_id=1,
+        action="update",
+        doc_number="DOC-EXT",
+    )
+    res = simulate_amendment_set(
+        batches=[b1],
+        movements=[rec1],
+        operations=[op],
+        today=date(2026, 9, 10),
+        active_location_docs=external_docs,
+    )
+    assert not res.can_apply
+    dup_blocker = next(bl for bl in res.blockers if bl.code == "DUPLICATE_DOC_NUMBER")
+    assert dup_blocker.details["conflicting_movement_id"] == 99
+
+
 def test_receipt_relocation_rejected_if_dependent_operations_on_old_location() -> None:
     """Перемещение прихода отклоняется блокером при наличии зависимого расхода на старом объекте."""
     b = _make_batch(1, loc_id=1)

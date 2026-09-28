@@ -3,6 +3,9 @@
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.api.amendment_schemas import OperationItem
 from app.inventory.amendments_domain import (
     AllocationBatchChange,
@@ -10,6 +13,7 @@ from app.inventory.amendments_domain import (
     AmendmentOperation,
 )
 from app.inventory.exceptions import AmendmentValidationError
+from app.models.inventory import Movement
 
 _ALLOWED_UPDATE_FIELDS = {
     "quantity",
@@ -22,7 +26,10 @@ _ALLOWED_UPDATE_FIELDS = {
 }
 
 
-def parse_operation_item(item: OperationItem) -> AmendmentOperation:
+def parse_operation_item(
+    item: OperationItem,
+    movement_type: str | None = None,
+) -> AmendmentOperation:
     """Преобразует входную схему операции в строго валидированную доменную операцию."""
     if item.expected_version < 1:
         raise AmendmentValidationError(
@@ -73,9 +80,19 @@ def parse_operation_item(item: OperationItem) -> AmendmentOperation:
                 f"Некорректное значение quantity: {fields['quantity']}",
                 code="INVALID_QUANTITY",
             ) from e
-        if quantity <= Decimal("0.000"):
+        if quantity == Decimal("0.000"):
             raise AmendmentValidationError(
-                f"Количество должно быть строго больше нуля, получено: {quantity}",
+                "Количество движения не может быть равно нулю",
+                code="ZERO_QUANTITY",
+            )
+        if (
+            quantity < Decimal("0.000")
+            and movement_type is not None
+            and movement_type != "correction"
+        ):
+            raise AmendmentValidationError(
+                f"Отрицательное количество запрещено для типа движения '{movement_type}', "
+                f"получено: {quantity}",
                 code="INVALID_QUANTITY",
             )
 
@@ -190,6 +207,8 @@ def parse_operation_item(item: OperationItem) -> AmendmentOperation:
 
 def parse_preview_operations(
     raw_operations: list[OperationItem] | None,
+    session: Session | None = None,
+    movement_types: dict[int, str] | None = None,
 ) -> tuple[AmendmentOperation, ...]:
     """Валидирует список операций предварительного просмотра."""
     if not raw_operations:
@@ -197,4 +216,16 @@ def parse_preview_operations(
             "Список операций не может быть пустым",
             code="EMPTY_OPERATIONS",
         )
-    return tuple(parse_operation_item(item) for item in raw_operations)
+
+    types_map = dict(movement_types or {})
+    if session is not None and not types_map:
+        m_ids = [op.movement_id for op in raw_operations]
+        rows = session.execute(
+            select(Movement.id, Movement.type).where(Movement.id.in_(m_ids))
+        ).all()
+        types_map = {int(r[0]): str(r[1]) for r in rows if r[0] is not None}
+
+    return tuple(
+        parse_operation_item(item, movement_type=types_map.get(item.movement_id))
+        for item in raw_operations
+    )

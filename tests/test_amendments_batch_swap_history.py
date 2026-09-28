@@ -138,3 +138,9 @@ def test_batch_swap_with_dependent_return_history_integrity(
     assert len(ret_hist["versions"]) == 2
     assert ret_hist["versions"][1]["action"] == "update"
     assert ret_hist["versions"][1]["reason"] == "Фактически выдана партия B2 вместо B1"
+    assert ret_hist["versions"][1]["snapshot"]["amendment_id"] == prev_resp["preview_id"]
+
+    cons_hist_resp = client.get(f"/api/movements/{cons.id}/history")
+    assert cons_hist_resp.status_code == 200
+    cons_hist = cons_hist_resp.json()
+    assert cons_hist["versions"][1]["snapshot"]["amendment_id"] == prev_resp["preview_id"]

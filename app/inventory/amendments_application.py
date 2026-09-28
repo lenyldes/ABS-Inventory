@@ -98,7 +98,15 @@ def confirm_amendment_set(
             code="stale_preview",
         )
 
-    # Восстанавливаем операции из сохранённых строк
+    # Восстанавливаем операции из сохранённых строк с типами движений
+    m_ids = [entry.movement_id for entry in amendment_set.entries]
+    type_rows = (
+        session.execute(select(Movement.id, Movement.type).where(Movement.id.in_(m_ids))).all()
+        if m_ids
+        else []
+    )
+    movement_types = {r[0]: r[1] for r in type_rows}
+
     operations: list[AmendmentOperation] = []
     for entry in sorted(amendment_set.entries, key=lambda e: e.id):
         op_item = OperationItem(
@@ -107,7 +115,9 @@ def confirm_amendment_set(
             expected_version=entry.expected_version,
             fields=entry.details,
         )
-        operations.append(parse_operation_item(op_item))
+        operations.append(
+            parse_operation_item(op_item, movement_type=movement_types.get(entry.movement_id))
+        )
 
     # Блокируем пары и заказы, перечитываем актуальное состояние
     state = load_amendment_state(session, operations)
@@ -138,6 +148,7 @@ def confirm_amendment_set(
         code_by_location_id=state.code_by_location_id,
         location_resolver=state.location_resolver,
         purchase_order_quantities=state.purchase_order_quantities,
+        active_location_docs=state.active_location_docs,
     )
 
     if not sim_result.can_apply:
@@ -196,6 +207,7 @@ def confirm_amendment_set(
         action = op_by_mid[m_id].action if m_id in op_by_mid else "update"
         db_m.current_version += 1
         snapshot = build_movement_snapshot(db_m)
+        snapshot["amendment_id"] = amendment_set.amendment_id
 
         version = MovementVersion(
             movement_id=db_m.id,

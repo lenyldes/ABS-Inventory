@@ -39,7 +39,7 @@ def preview_amendments(
             code="EMPTY_OPERATIONS",
         )
 
-    operations = parse_preview_operations(request.operations)
+    operations = parse_preview_operations(request.operations, session=session)
     preview_id, signature, sim_result = create_amendment_preview(
         session=session,
         reason=request.reason.strip(),
