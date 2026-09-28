@@ -34,6 +34,7 @@ docker compose run --rm test ruff check .
 docker compose run --rm test ruff format --check .
 docker compose run --rm test pytest -q
 bash scripts/test_compose_lifecycle.sh  # сквозной тест Compose на отдельном томе
+bash scripts/test_compose_failure.sh    # тест сбоя миграции и сидов во время запуска Compose
 ```
 
 Сервис `test` передает `APP_ENV=test`, изолированный `TEST_DATABASE_URL` и рабочий `MAIN_DATABASE_URL`. В коде действует двухуровневый защитный отказ:
