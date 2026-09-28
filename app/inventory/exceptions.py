@@ -148,3 +148,19 @@ class InvalidPaginationError(InventoryError):
             code="INVALID_PAGINATION",
             details=details or {},
         )
+
+
+class AmendmentValidationError(InventoryError):
+    """Ошибка структурной валидации параметров набора исправлений."""
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "INVALID_AMENDMENT",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            details=details or {},
+        )
