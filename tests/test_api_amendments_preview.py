@@ -187,7 +187,10 @@ def test_preview_400_empty_reason_or_operations(client: TestClient) -> None:
     # Нет причины
     resp_no_reason = client.post(
         "/api/amendments/preview",
-        json={"reason": "   ", "operations": [{"movement_id": 1, "action": "cancel"}]},
+        json={
+            "reason": "   ",
+            "operations": [{"movement_id": 1, "action": "cancel", "expected_version": 1}],
+        },
     )
     assert resp_no_reason.status_code == 400
     assert resp_no_reason.json()["code"] == "EMPTY_REASON"
@@ -207,7 +210,7 @@ def test_preview_404_movement_not_found(client: TestClient) -> None:
         "/api/amendments/preview",
         json={
             "reason": "Тест",
-            "operations": [{"movement_id": 999999, "action": "cancel"}],
+            "operations": [{"movement_id": 999999, "action": "cancel", "expected_version": 1}],
         },
     )
     assert resp.status_code == 404
@@ -244,6 +247,7 @@ def test_preview_422_sku_change_or_invalid_fields(
                 {
                     "movement_id": rec.id,
                     "action": "update",
+                    "expected_version": 1,
                     "fields": {"sku": "NEW-SKU-FORBIDDEN"},
                 }
             ],
@@ -261,6 +265,7 @@ def test_preview_422_sku_change_or_invalid_fields(
                 {
                     "movement_id": rec.id,
                     "action": "update",
+                    "expected_version": 1,
                     "fields": {"unknown_extra_field": 123},
                 }
             ],
@@ -268,3 +273,25 @@ def test_preview_422_sku_change_or_invalid_fields(
     )
     assert resp_extra.status_code == 422
     assert resp_extra.json()["code"] == "INVALID_FIELD"
+
+
+def test_preview_422_missing_expected_version_creates_no_set(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    """Отсутствующая версия отклоняется до создания набора исправлений."""
+    response = client.post(
+        "/api/amendments/preview",
+        json={
+            "reason": "Проверка обязательной версии",
+            "operations": [{"movement_id": 1, "action": "cancel"}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert any(
+        error.startswith("body.operations.0.expected_version:")
+        for error in response.json()["details"]["errors"]
+    )
+    assert db_session.execute(select(AmendmentSet)).scalars().first() is None

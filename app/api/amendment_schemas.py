@@ -19,7 +19,7 @@ class OperationItem(BaseModel):
 
     movement_id: int
     action: Literal["update", "cancel"]
-    expected_version: int = 1
+    expected_version: int
     fields: dict[str, Any] | None = None
 
 
