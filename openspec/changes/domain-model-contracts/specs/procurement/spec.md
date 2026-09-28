@@ -61,3 +61,26 @@
 #### Scenario: Отмена приёмки
 - **WHEN** приёмка 12 литров отменена после успешной проверки зависимостей
 - **THEN** учётный остаток уменьшается на 12, неполученное количество восстанавливается на 12 атомарно.
+
+### Requirement: Управление условиями и ожидаемыми поставками в прототипе
+Система SHALL обеспечивать ведение условий и жизненного цикла поставок без внешнего портала поставщика:
+1. **Закупочные условия**:
+   - `PUT /api/procurement/conditions` — сохранение/обновление условий: `sku` (str), `supplier_id` (str), `lead_time_days` (int $\ge 1$), `package_size` (Decimal $> 0$), `min_order_qty` (Decimal $> 0$), `estimated_price` (Decimal $\ge 0$ | null), `is_primary` (bool).
+   - `GET /api/procurement/conditions` — фильтрация по `sku` и `supplier_id`.
+2. **Жизненный цикл ожидаемых поставок**:
+   - `POST /api/procurement/orders` — создание заказа оператором: `sku`, `location`, `supplier_id`, `expected_date`, `expected_qty` ($> 0$), `unit_price`, `doc_number`. Статус созданного заказа — `pending`, `received_qty = 0`, `pending_qty = expected_qty`.
+   - `GET /api/procurement/orders` — список заказов с фильтрами по `status` (`pending`, `delayed`, `partially_received`, `received`, `cancelled`), `location`, `sku`.
+   - `PATCH /api/procurement/orders/{id}` — ручная корректировка оператором:
+     - смена `expected_date` (при переносе на дату $> as\_of$ статус `delayed` снимается, возвращается в `pending` или `partially_received`);
+     - корректировка `expected_qty` ($\ge received\_qty$; при равенстве статус переходит в `received`, а `pending_qty` обнуляется);
+     - отмена заказа (`status = cancelled`, разрешена только при `received_qty == 0`).
+3. **Частичная приёмка и синхронизация**:
+   - При `receipt` с `purchase_order_id` система проверяет `quantity <= pending_qty` (иначе `422`, требуя предварительного изменения `expected_qty`). В заказе атомарно `received_qty += quantity`, `pending_qty -= quantity`. При `pending_qty == 0` статус становится `received`, иначе `partially_received`.
+
+#### Scenario: Путь от заказа до частичной приёмки и ручной корректировки
+- **WHEN** оператор создал заказ на 20 ед., принял 12 ед. через `receipt` с указанием заказа, а затем через PATCH скорректировал `expected_qty` до 12
+- **THEN** статус заказа становится `received`, `pending_qty` равен 0, складской остаток равен 12, а будущий прогноз не учитывает неполученный остаток.
+
+#### Scenario: Перенос даты задержанной поставки
+- **WHEN** заказ в статусе `delayed` с датой $\le as\_of$ перенесён через PATCH на дату $> as\_of$
+- **THEN** статус заказа переходит в `pending` (или `partially_received`), и поставка включается в прогнозный `incoming_qty`.

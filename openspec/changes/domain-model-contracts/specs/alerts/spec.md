@@ -55,3 +55,42 @@ GET `/api/alerts` SHALL вычислять предупреждения при �
 #### Scenario: Предупреждение о неполной истории
 - **WHEN** первый приход товара был 25 дней назад
 - **THEN** предупреждение сообщает о риске занижения среднесуточного потребления из-за короткой истории (25 из 90 дней).
+
+### Requirement: Контракт GET `/api/alerts`
+Система SHALL предоставлять эндпоинт фильтрации предупреждений:
+- **Query-параметры**: `location` (str), `sku` (str), `type` (enum: `stockout`, `potential_stockout`, `expiring_soon`, `expired`, `no_movement`, `writeoff_risk`, `incomplete_history`), `level` (enum: `critical`, `warning`, `info`), `as_of` (date, def today), `shelf_life_days_threshold` (int, def 30, $\ge 1$), `no_movement_days_threshold` (int, def 90, $\ge 1$), `limit` (int, 1..100, def 50), `offset` (int, $\ge 0$, def 0).
+- **Ответ 200 OK**:
+  ```json
+  {
+    "items": [
+      {
+        "id": "alert-stockout-MSK-01-OIL-500-2026-09-28",
+        "type": "stockout",
+        "level": "critical",
+        "sku": "OIL-500",
+        "location": "MSK-01",
+        "batch_id": null,
+        "message": "Критический дефицит: исчерпание запаса до возможного прибытия заказа",
+        "metrics": {
+          "available_stock": "0.000",
+          "average_daily_consumption": "1.500000",
+          "lead_time_days": 5,
+          "days_of_stock": "0.0"
+        },
+        "as_of": "2026-09-28"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+- **Ошибки**: `400` (пороги $< 1$, `limit` вне [1, 100], `offset < 0`), `422` (невалидный формат даты `as_of`).
+
+#### Scenario: Фильтрация по уровню и объекту
+- **WHEN** клиент запрашивает GET `/api/alerts?location=MSK-01&level=critical`
+- **THEN** система возвращает только критические предупреждения по указанному филиалу с кодом `200`.
+
+#### Scenario: Некорректный порог
+- **WHEN** передан `shelf_life_days_threshold=0`
+- **THEN** система возвращает `400 Bad Request`.
