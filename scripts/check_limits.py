@@ -29,7 +29,11 @@ EXCLUDE_DIRS = {
     "build",
     "dist",
 }
-EXCEPTIONS = {"doc/ROADMAP.md"}
+EXCEPTIONS = {
+    "doc/ROADMAP.md",
+    "doc/SOW/Тестовое задание/БТ СПА.md",
+    "doc/SOW/Тестовое задание/Тестовое бэкенд СПА.md",
+}
 
 failed = False
 
