@@ -11,17 +11,31 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401
 from alembic import command
+from app.core.config import get_settings
 from app.core.database import get_engine, get_session_factory
+from tests.safety import ensure_truncate_safety, validate_test_database_safety
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_database() -> None:
-    """Гарантирует существование тестовой БД и применяет к ней миграции Alembic."""
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url or "sqlite" in db_url:
-        return
+    """Гарантирует безопасность окружения тестов и применяет миграции Alembic."""
+    app_env = os.getenv("APP_ENV")
+    test_db_url = os.getenv("TEST_DATABASE_URL")
+    main_db_url = os.getenv("MAIN_DATABASE_URL")
 
-    url = make_url(db_url)
+    # Валидация безопасности: защитный отказ до любых действий с БД
+    validate_test_database_safety(
+        app_env=app_env,
+        test_db_url=test_db_url,
+        main_db_url=main_db_url,
+    )
+
+    # Гарантируем, что движок и миграции используют тестовую БД
+    assert test_db_url is not None
+    os.environ["DATABASE_URL"] = test_db_url
+    get_settings.cache_clear()
+
+    url = make_url(test_db_url)
     target_db = url.database
     if not target_db:
         return
@@ -47,10 +61,16 @@ def setup_test_database() -> None:
 
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
-    """Сессия БД с гарантированной очисткой всех данных между тестами."""
+    """Сессия БД с гарантированной защитой от очистки рабочей базы данных."""
     engine = get_engine()
 
-    # Быстрая очистка всех таблиц в правильном порядке
+    # Защитный барьер перед TRUNCATE
+    ensure_truncate_safety(
+        current_database=engine.url.database,
+        app_env=os.getenv("APP_ENV"),
+    )
+
+    # Очистка всех предметных таблиц
     with engine.connect() as conn:
         with conn.begin():
             conn.execute(

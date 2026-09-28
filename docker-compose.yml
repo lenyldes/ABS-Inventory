@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:18.4
-    container_name: abs_db
+    container_name: ${ABS_DB_CONTAINER:-abs_db}
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-abs_user}
@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: abs_app
+    container_name: ${ABS_APP_CONTAINER:-abs_app}
     restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV:-development}
@@ -42,10 +42,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: abs_test
+    container_name: ${ABS_TEST_CONTAINER:-abs_test}
     environment:
       APP_ENV: test
+      TEST_DATABASE_URL: ${TEST_DATABASE_URL:-postgresql+psycopg://abs_user:abs_password@db:5432/abs_inventory_test}
       DATABASE_URL: ${TEST_DATABASE_URL:-postgresql+psycopg://abs_user:abs_password@db:5432/abs_inventory_test}
+      MAIN_DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://abs_user:abs_password@db:5432/abs_inventory}
     volumes:
       - .:/app
     depends_on:

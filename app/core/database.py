@@ -1,8 +1,11 @@
-"""Подключение к PostgreSQL и управление сессиями SQLAlchemy."""
+"""Подключение к PostgreSQL, управление сессиями и проверка готовности схемы."""
 
 from collections.abc import Generator
+from functools import lru_cache
 
-from sqlalchemy import create_engine, text
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.core.config import get_settings
@@ -11,6 +14,34 @@ Base = declarative_base()
 
 _engine = None
 _session_factory = None
+
+REQUIRED_TABLES: frozenset[str] = frozenset(
+    {
+        "items",
+        "locations",
+        "suppliers",
+        "supplier_conditions",
+        "purchase_orders",
+        "batches",
+        "movements",
+        "movement_allocations",
+        "amendment_sets",
+        "amendment_entries",
+        "movement_versions",
+        "stock_locks",
+    }
+)
+
+
+@lru_cache
+def get_expected_migration_head() -> str | None:
+    """Возвращает ожидаемый идентификатор head-ревизии миграций Alembic."""
+    try:
+        alembic_cfg = Config("alembic.ini")
+        script_dir = ScriptDirectory.from_config(alembic_cfg)
+        return script_dir.get_current_head()
+    except Exception:
+        return None
 
 
 def get_engine():
@@ -49,10 +80,7 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def check_database_connection() -> bool:
-    """Проверяет доступность базы данных коротким запросом.
-
-    Возвращает True при успешном подключении, иначе False без утечки секретов.
-    """
+    """Проверяет базовую доступность подключения к БД коротким запросом."""
     try:
         engine = get_engine()
         with engine.connect() as conn:
@@ -60,3 +88,37 @@ def check_database_connection() -> bool:
         return True
     except Exception:
         return False
+
+
+def check_database_readiness() -> tuple[bool, str]:
+    """Проверяет доступность базы данных, актуальность миграций и наличие обязательных таблиц.
+
+    Возвращает кортеж (is_ready, status_detail). При ошибках не раскрывает секреты.
+    """
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # 1. Проверка базовой сетевой доступности
+            conn.execute(text("SELECT 1"))
+
+            # 2. Проверка ревизии Alembic
+            try:
+                current_rev = conn.execute(
+                    text("SELECT version_num FROM alembic_version LIMIT 1")
+                ).scalar()
+            except Exception:
+                return False, "migration_missing"
+
+            expected_rev = get_expected_migration_head()
+            if expected_rev and current_rev != expected_rev:
+                return False, "migration_mismatch"
+
+            # 3. Проверка наличия всех предметных таблиц
+            inspector = inspect(conn)
+            existing_tables = set(inspector.get_table_names())
+            if not REQUIRED_TABLES.issubset(existing_tables):
+                return False, "schema_incomplete"
+
+        return True, "available"
+    except Exception:
+        return False, "unavailable"
