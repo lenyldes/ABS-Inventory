@@ -3,8 +3,8 @@ set -euo pipefail
 
 # Сквозной интеграционный сценарий: preview -> confirm -> history -> остатки и связанные поставки
 PROJECT_NAME="abs_amendments_e2e_test"
-POSTGRES_PORT="5441"
-PORT="8011"
+POSTGRES_PORT="5443"
+PORT="8013"
 
 cleanup() {
     COMPOSE_PROJECT_NAME="${PROJECT_NAME}" docker compose down -v --remove-orphans 2>/dev/null || true
