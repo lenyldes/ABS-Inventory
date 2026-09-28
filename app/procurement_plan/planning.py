@@ -25,7 +25,7 @@ from app.procurement_plan.warnings import (
     WARN_NO_DEMAND_HISTORY,
     WARN_ORDER_DELAYED,
     WARN_PRICE_UNKNOWN,
-    WARN_TEMPORARY_DEFICIT,
+    format_temporary_deficit_warning,
 )
 
 
@@ -74,7 +74,20 @@ def plan_pair_procurement(
 
     # Недатированная позиция при отсутствии срока поставки
     if lead_time_days is None:
-        usable_stock = sum((batch_stocks or {}).values(), ZERO_QTY)
+        _, horizon_end, _ = compute_horizon_dates(
+            as_of=as_of,
+            horizon_months=horizon_months,
+        )
+        stock_qty = sum((batch_stocks or {}).values(), ZERO_QTY)
+        incoming_in_horizon = sum(
+            (
+                order.pending_qty
+                for order in incoming_orders
+                if order.expected_date <= horizon_end and order.pending_qty > ZERO_QTY
+            ),
+            ZERO_QTY,
+        )
+        usable_stock = stock_qty + incoming_in_horizon
         undated_item = calculate_undated_item(
             as_of=as_of,
             sku=sku,
@@ -158,8 +171,10 @@ def plan_pair_procurement(
         delivery_date = order_date + timedelta(days=lead_time_days)
 
         is_early_deficit = calc_order_date < as_of
-        if is_early_deficit and WARN_TEMPORARY_DEFICIT not in pair_warnings:
-            pair_warnings.append(WARN_TEMPORARY_DEFICIT)
+        if is_early_deficit:
+            deficit_warn = format_temporary_deficit_warning(drop_date, delivery_date)
+            if deficit_warn not in pair_warnings:
+                pair_warnings.append(deficit_warn)
 
         if delivery_date > horizon_end:
             pair_warnings.append(

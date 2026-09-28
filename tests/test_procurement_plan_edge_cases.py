@@ -5,10 +5,7 @@ from decimal import Decimal
 
 from app.forecasting.domain import IncomingOrderSnapshot
 from app.procurement_plan.planning import plan_pair_procurement
-from app.procurement_plan.warnings import (
-    WARN_ORDER_DELAYED,
-    WARN_TEMPORARY_DEFICIT,
-)
+from app.procurement_plan.warnings import WARN_ORDER_DELAYED
 
 
 def test_delayed_orders_arrive_as_of_and_emit_warning() -> None:
@@ -109,7 +106,13 @@ def test_temporary_deficit_orders_on_as_of_with_warning() -> None:
     assert item.delivery_date == date(2026, 9, 17)
     assert any("TEMPORARY_DEFICIT" in w for w in item.warnings)
     assert any("TEMPORARY_DEFICIT" in w for w in res.warnings)
-    assert any(WARN_TEMPORARY_DEFICIT in w for w in item.warnings)
+    # Проверка конкретных дат интервала дефицита в тексте предупреждения
+    assert any("2026-09-11" in w and "2026-09-17" in w for w in item.warnings)
+    assert any("2026-09-11" in w and "2026-09-17" in w for w in res.warnings)
+    # Проверка параметров интервала дефицита в метриках позиции
+    assert item.metrics["deficit_start"] == "2026-09-11"
+    assert item.metrics["deficit_end"] == "2026-09-16"
+    assert item.metrics["deficit_delivery_date"] == "2026-09-17"
 
 
 def test_delivery_beyond_horizon_no_order_placed() -> None:

@@ -41,12 +41,6 @@ def calculate_undated_item(
     raw_safety = average_daily_consumption * Decimal(service_days)
 
     raw_quantity = max(ZERO_QTY, raw_forecast + raw_safety - usable_stock)
-    if (
-        raw_quantity <= ZERO_QTY
-        and usable_stock <= ZERO_QTY
-        and average_daily_consumption > Decimal("0")
-    ):
-        raw_quantity = raw_forecast + raw_safety
 
     quantity = round_order_quantity(
         raw_quantity,
@@ -69,6 +63,7 @@ def calculate_undated_item(
         "min_order_qty": str(min_order_qty) if min_order_qty is not None else None,
         "horizon_months": horizon_months,
         "horizon_days": days_count,
+        "usable_stock": str(usable_stock),
         "is_undated": True,
     }
 

@@ -1,6 +1,6 @@
 """Построение схемы позиции плана закупок с метриками и предупреждениями."""
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -13,7 +13,7 @@ from app.procurement.rounding import (
 from app.procurement_plan.warnings import (
     WARN_ORDER_DELAYED,
     WARN_PRICE_UNKNOWN,
-    WARN_TEMPORARY_DEFICIT,
+    format_temporary_deficit_warning,
 )
 
 
@@ -47,7 +47,7 @@ def build_plan_item(
 
     item_warnings: list[str] = []
     if is_early_deficit:
-        item_warnings.append(WARN_TEMPORARY_DEFICIT)
+        item_warnings.append(format_temporary_deficit_warning(drop_date, delivery_date))
     if has_delayed_orders:
         item_warnings.append(WARN_ORDER_DELAYED)
     if rounded_price is None:
@@ -64,6 +64,14 @@ def build_plan_item(
         "drop_date": drop_date.isoformat(),
         "coverage_days": coverage_days,
     }
+    if is_early_deficit:
+        metrics["deficit_start"] = drop_date.isoformat()
+        metrics["deficit_end"] = (
+            (delivery_date - timedelta(days=1)).isoformat()
+            if delivery_date > drop_date
+            else drop_date.isoformat()
+        )
+        metrics["deficit_delivery_date"] = delivery_date.isoformat()
 
     return PlanItemSchema(
         sku=sku,
