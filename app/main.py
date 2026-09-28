@@ -9,6 +9,7 @@ from app.api.forecast import router as forecast_router
 from app.api.health import router as health_router
 from app.api.movement_history import router as movement_history_router
 from app.api.movements import router as movements_router
+from app.api.procurement_plan import router as procurement_plan_router
 from app.api.stock import router as stock_router
 
 app = FastAPI(
@@ -26,6 +27,7 @@ app.include_router(stock_router)
 app.include_router(amendments_router)
 app.include_router(forecast_router)
 app.include_router(alerts_router)
+app.include_router(procurement_plan_router)
 
 
 @app.get("/")

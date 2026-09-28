@@ -1,15 +1,21 @@
 """Чистые функции расчёта точки и даты заказа, рекомендуемого объёма и стоимости."""
 
 from datetime import date, timedelta
-from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from app.forecasting.domain import DailyFefoResult, OrderRecommendation
-
-_ZERO_QTY = Decimal("0.000")
-_ZERO_PRICE = Decimal("0.00")
-_QTY_QUANT = Decimal("0.001")
-_PRICE_QUANT = Decimal("0.01")
+from app.procurement.rounding import (
+    QTY_QUANT as _QTY_QUANT,
+)
+from app.procurement.rounding import (
+    ZERO_QTY as _ZERO_QTY,
+)
+from app.procurement.rounding import (
+    calculate_total_cost,
+    round_order_quantity,
+    round_unit_price,
+)
 
 
 def calculate_order_recommendation(
@@ -49,12 +55,8 @@ def calculate_order_recommendation(
     # При нулевом потреблении за 90 дней
     if a <= Decimal("0"):
         warnings.append("Потребление за 90 дней отсутствует, закупка не рекомендуется")
-        rounded_price = (
-            unit_price.quantize(_PRICE_QUANT, rounding=ROUND_HALF_UP)
-            if unit_price is not None
-            else None
-        )
-        total_cost = _ZERO_PRICE if rounded_price is not None else None
+        rounded_price = round_unit_price(unit_price)
+        total_cost = calculate_total_cost(_ZERO_QTY, rounded_price)
         if rounded_price is None:
             warnings.append("Цена не указана, расчёт стоимости невозможен")
         return OrderRecommendation(
@@ -125,30 +127,23 @@ def calculate_order_recommendation(
         daily_fefo is not None and daily_fefo.total_deficit <= _ZERO_QTY and stockout_date is None
     ):
         recommended_qty = _ZERO_QTY
-    elif p_need <= _ZERO_QTY:
-        recommended_qty = _ZERO_QTY
     else:
-        effective_p = p_need
-        if min_order_qty is not None and min_order_qty > _ZERO_QTY:
-            effective_p = max(effective_p, min_order_qty)
-
-        if package_size is not None and package_size > _ZERO_QTY:
-            num_packages = (effective_p / package_size).to_integral_value(rounding=ROUND_CEILING)
-            recommended_qty = (num_packages * package_size).quantize(_QTY_QUANT)
-        else:
-            recommended_qty = effective_p.quantize(_QTY_QUANT, rounding=ROUND_HALF_UP)
+        recommended_qty = round_order_quantity(
+            need=p_need,
+            package_size=package_size,
+            min_order_qty=min_order_qty,
+        )
 
     explanation_details["p_need"] = str(p_need)
     explanation_details["usable_stock"] = str(usable_stock)
 
     # Цена и стоимость
-    if unit_price is None:
-        final_price = None
+    final_price = round_unit_price(unit_price)
+    if final_price is None:
         final_cost = None
         warnings.append("Цена не указана, расчёт стоимости невозможен")
     else:
-        final_price = unit_price.quantize(_PRICE_QUANT, rounding=ROUND_HALF_UP)
-        final_cost = (recommended_qty * final_price).quantize(_PRICE_QUANT, rounding=ROUND_HALF_UP)
+        final_cost = calculate_total_cost(recommended_qty, final_price)
 
     return OrderRecommendation(
         forecast_consumption=forecast_consumption,
