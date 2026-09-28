@@ -124,6 +124,8 @@ def post_forecast(
     explanation_domain, all_warnings = build_forecast_explanation(
         as_of=calc_as_of,
         days_count=daily_fefo.days_count,
+        horizon_days=req.horizon_days,
+        horizon_months=req.horizon_months,
         service_days=req.service_days,
         balance=balance,
         consumption_metrics=consumption_metrics,

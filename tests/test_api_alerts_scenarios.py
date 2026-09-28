@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.inventory.operations import register_consume, register_receipt
 from app.main import app
 from app.models.catalog import Item, Location, Supplier
-from tests.forecasting_fixtures import make_supplier_condition
+from tests.forecasting_fixtures import make_purchase_order, make_supplier_condition
 
 
 @pytest.fixture
@@ -163,3 +163,42 @@ def test_get_alerts_horizon_days(
     metrics_exp = exp_items[0]["metrics"]
     assert metrics_exp["horizon_days"] == 7
     assert metrics_exp["horizon_end"] == (as_of + timedelta(days=7)).isoformat()
+
+
+def test_get_alerts_incomplete_history_before_first_receipt(
+    client: TestClient,
+    db_session: Session,
+    base_catalog: tuple[Item, Location, Supplier],
+) -> None:
+    """Заказ без складских операций показывает отсутствие истории на дату запроса."""
+    item, location, supplier = base_catalog
+    as_of = date(2026, 9, 28)
+    make_purchase_order(
+        db_session,
+        item_id=item.id,
+        location_id=location.id,
+        supplier_id=supplier.id,
+        doc_number="PO-BEFORE-RECEIPT",
+        expected_date=as_of + timedelta(days=5),
+        expected_qty=Decimal("10.000"),
+    )
+
+    response = client.get(
+        "/api/alerts",
+        params={
+            "as_of": as_of.isoformat(),
+            "sku": item.sku,
+            "location": location.code,
+            "type": "incomplete_history",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    alert = data["items"][0]
+    assert alert["level"] == "info"
+    assert alert["sku"] == item.sku
+    assert alert["location"] == location.code
+    assert alert["metrics"]["history_days"] == 0
+    assert alert["metrics"]["first_movement_date"] is None

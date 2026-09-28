@@ -54,6 +54,15 @@ def test_post_forecast_with_horizon_months(
     assert data["horizon_end"] == "2026-02-28"
     assert data["days_count"] == 28
     assert len(data["daily_forecast"]) == 28
+    data_used = {item["name"]: item for item in data["explanation"]["data_used"]}
+    assert data_used["horizon_months"] == {
+        "name": "horizon_months",
+        "value": 1,
+        "source": "Параметры запроса прогноза",
+    }
+    assert "horizon_days" not in data_used
+    assert data_used["days_count"]["value"] == 28
+    assert "Расчёт" in data_used["days_count"]["source"]
 
 
 def test_post_forecast_null_metrics_when_unavailable(

@@ -60,6 +60,8 @@ def _consumption_sources(
 def build_forecast_explanation(
     as_of: date,
     days_count: int,
+    horizon_days: int | None,
+    horizon_months: int | None,
     service_days: int,
     balance: StockBalance,
     consumption_metrics: ConsumptionMetrics,
@@ -101,9 +103,14 @@ def build_forecast_explanation(
             source="Количество календарных дней от первого движения до as_of",
         ),
         ExplanationItem(
-            name="horizon_days",
-            value=days_count,
+            name="horizon_days" if horizon_days is not None else "horizon_months",
+            value=horizon_days if horizon_days is not None else horizon_months,
             source="Параметры запроса прогноза",
+        ),
+        ExplanationItem(
+            name="days_count",
+            value=days_count,
+            source="Расчёт: число календарных дней выбранного горизонта",
         ),
         ExplanationItem(
             name="service_days",
