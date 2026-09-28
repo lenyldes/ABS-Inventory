@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session_factory
+from app.inventory import amendments_state
 from app.inventory.amendments_domain import AmendmentOperation
 from app.inventory.amendments_signature import compute_state_signature
 from app.inventory.amendments_state import (
@@ -168,6 +169,76 @@ def test_acquire_amendment_locks_orders(db_session: Session) -> None:
     )
     assert len(locked_pos) == 1
     assert locked_pos[0].id == po.id
+
+
+def test_load_state_locks_all_related_orders_once_in_id_order(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Заказ редактируемого прихода не блокируется раньше меньшего связанного ID."""
+    item, loc, _, _ = _setup_entities(db_session)
+    supplier = Supplier(supplier_id="SUP-SIG-ORDER", name="Поставщик заказов")
+    db_session.add(supplier)
+    db_session.flush()
+    orders = [
+        PurchaseOrder(
+            item_id=item.id,
+            location_id=loc.id,
+            supplier_id=supplier.id,
+            doc_number=f"PO-SIG-ORDER-{number}",
+            expected_date=date(2026, 10, 1),
+            expected_qty=Decimal("10.000"),
+            received_qty=Decimal("0.000"),
+            pending_qty=Decimal("10.000"),
+            status="pending",
+        )
+        for number in (1, 2)
+    ]
+    db_session.add_all(orders)
+    db_session.commit()
+
+    receipts = [
+        register_receipt(
+            db_session,
+            item=item,
+            location=loc,
+            operation_date=date(2026, 9, 21 + number),
+            quantity=Decimal("1.000"),
+            doc_number=f"REC-SIG-ORDER-{number}",
+            batch_number=f"B-SIG-ORDER-{number}",
+            expiry_date=date(2027, 9, 25),
+            unit_price=Decimal("100.00"),
+            purchase_order_id=order.id,
+        ).movement
+        for number, order in enumerate(orders)
+    ]
+    db_session.commit()
+
+    lock_calls: list[tuple[tuple[tuple[int, int], ...], tuple[int, ...]]] = []
+    original = amendments_state.acquire_amendment_locks
+
+    def record_locks(
+        session: Session,
+        pairs: list[tuple[int, int]] | tuple[()],
+        po_ids: list[int] | None = None,
+    ) -> list[PurchaseOrder]:
+        lock_calls.append((tuple(pairs), tuple(po_ids or ())))
+        return original(session, pairs, po_ids)
+
+    monkeypatch.setattr(amendments_state, "acquire_amendment_locks", record_locks)
+    state = load_amendment_state(
+        db_session,
+        [AmendmentOperation(movement_id=receipts[1].id, action="update")],
+    )
+
+    assert lock_calls == [
+        (((item.id, loc.id),), ()),
+        ((), (orders[0].id, orders[1].id)),
+    ]
+    assert [order.id for order in state.purchase_orders] == [
+        orders[0].id,
+        orders[1].id,
+    ]
 
 
 def test_concurrent_new_movement_detected_via_signature(db_session: Session) -> None:

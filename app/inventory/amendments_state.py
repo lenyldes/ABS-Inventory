@@ -110,7 +110,7 @@ def load_amendment_state(
 ) -> LoadedAmendmentState:
     """Загружает данные, берёт блокировки в детерминированном порядке и считает подпись."""
     pairs, initial_po_ids = find_affected_pairs_and_orders(session, operations)
-    acquire_amendment_locks(session, pairs, initial_po_ids)
+    acquire_amendment_locks(session, pairs)
 
     all_movements: list[Movement] = []
     all_batches: list[Batch] = []
@@ -139,15 +139,7 @@ def load_amendment_state(
         if m.purchase_order_id is not None:
             all_po_ids.add(m.purchase_order_id)
 
-    locked_pos: list[PurchaseOrder] = []
-    if all_po_ids:
-        stmt = (
-            select(PurchaseOrder)
-            .where(PurchaseOrder.id.in_(sorted(all_po_ids)))
-            .order_by(PurchaseOrder.id.asc())
-            .with_for_update()
-        )
-        locked_pos = list(session.execute(stmt).scalars().all())
+    locked_pos = acquire_amendment_locks(session, (), sorted(all_po_ids))
 
     purchase_order_quantities: dict[int, tuple[Decimal, Decimal]] = {}
     for po in locked_pos:
