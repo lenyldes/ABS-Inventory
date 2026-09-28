@@ -34,3 +34,10 @@
 - [x] 5.3 Параметризовать имена контейнеров в `docker-compose.yml`, передать тестовые переменные в сервис `test` и обновить спецификацию, дизайн и инструкцию запуска в `runbook.md`.
 - [x] 5.4 Провести Zero-Defect проверки (`check_limits.py`, `ruff`, `pytest`, `openspec validate`) и подготовить сводку Stop-and-Review.
 
+## 6. Исправление замечаний аудита перед архивацией
+
+- [x] 6.1 Устранить критическую уязвимость проверки тестовой БД: сравнивать адреса до подмены `DATABASE_URL`, требовать `'test'` в имени тестовой базы, усилить `ensure_truncate_safety` и добавить тесты защитного отказа для нестандартных имен БД в `tests/test_safety.py`.
+- [x] 6.2 Устранить ложную готовность `/health` при неизвестной ревизии: возвращать `(False, "migration_head_unknown")` при `expected_rev is None`, добавить тесты в `tests/test_database.py` и `tests/test_health.py`.
+- [x] 6.3 Реализовать сквозной интеграционный сценарий жизненного цикла: первый запуск на чистой БД, сбои подготовки схемы и ревизии, сохранение пользовательских данных и сидов после down/up в `tests/test_lifecycle_integration.py`, а также сценарий с отдельным тестовым томом Compose в `tests/test_compose_lifecycle.py` и `scripts/test_compose_lifecycle.sh`.
+- [x] 6.4 Провести финальные проверки Zero-Defect (лимиты, Ruff, 48 тестов pytest, `openspec validate --strict`) и подготовить сводку Stop-and-Review.
+

@@ -71,6 +71,14 @@ def test_database_readiness_migration_mismatch(monkeypatch: pytest.MonkeyPatch) 
     assert status_detail == "migration_mismatch"
 
 
+def test_database_readiness_unknown_migration_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Проверка возврата False и migration_head_unknown при сбое определения head-ревизии."""
+    monkeypatch.setattr(database, "get_expected_migration_head", lambda: None)
+    is_ready, status_detail = database.check_database_readiness()
+    assert is_ready is False
+    assert status_detail == "migration_head_unknown"
+
+
 def test_database_connection_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """Проверка возврата False и unavailable при нарушении соединения."""
 

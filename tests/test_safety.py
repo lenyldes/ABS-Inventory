@@ -45,12 +45,34 @@ def test_safety_rejects_reserved_database_names() -> None:
 
 def test_safety_rejects_matching_main_and_test_urls() -> None:
     """Проверка защитного отказа, если TEST_DATABASE_URL совпадает с рабочей БД."""
-    url = "postgresql+psycopg://user:pass@db:5432/abs_inventory_custom"
+    url = "postgresql+psycopg://user:pass@db:5432/abs_inventory_test_custom"
     with pytest.raises(DatabaseSafetyViolationError, match="указывает на ту же базу данных"):
         validate_test_database_safety(
             app_env="test",
             test_db_url=url,
             main_db_url=url,
+        )
+
+
+def test_safety_rejects_matching_initial_database_url_when_main_url_missing() -> None:
+    """Проверка защитного отказа при совпадении с исходным DATABASE_URL без MAIN_DATABASE_URL."""
+    custom_url = "postgresql+psycopg://user:pass@db:5432/custom_test_database"
+    initial_db_url = custom_url
+    main_db_url = None or initial_db_url
+    with pytest.raises(DatabaseSafetyViolationError, match="указывает на ту же базу данных"):
+        validate_test_database_safety(
+            app_env="test",
+            test_db_url=custom_url,
+            main_db_url=main_db_url,
+        )
+
+
+def test_safety_rejects_database_without_test_in_name() -> None:
+    """Проверка защитного отказа, если имя тестовой БД не содержит 'test'."""
+    with pytest.raises(DatabaseSafetyViolationError, match="должно содержать подстроку 'test'"):
+        validate_test_database_safety(
+            app_env="test",
+            test_db_url="postgresql+psycopg://user:pass@db:5432/custom_production_db",
         )
 
 
@@ -79,9 +101,40 @@ def test_truncate_safety_blocks_production_and_invalid_dbs() -> None:
             )
 
 
+def test_truncate_safety_blocks_database_without_test_substring() -> None:
+    """Проверка блокировки TRUNCATE для рабочих баз с нестандартным именем без 'test'."""
+    with pytest.raises(DatabaseSafetyViolationError, match="должно содержать подстроку 'test'"):
+        ensure_truncate_safety(
+            current_database="custom_production_db",
+            app_env="test",
+        )
+
+
+def test_truncate_safety_blocks_matching_prohibited_urls() -> None:
+    """Проверка блокировки TRUNCATE, если база совпадает с запрещённым рабочим URL."""
+    with pytest.raises(DatabaseSafetyViolationError, match="совпадает с запрещенной рабочей базой"):
+        ensure_truncate_safety(
+            current_database="custom_test_db",
+            app_env="test",
+            prohibited_db_urls=("postgresql+psycopg://user:pass@db:5432/custom_test_db",),
+        )
+
+
+def test_truncate_safety_blocks_mismatched_test_db_url() -> None:
+    """Проверка блокировки TRUNCATE при несовпадении с целевой базой из TEST_DATABASE_URL."""
+    with pytest.raises(DatabaseSafetyViolationError, match="не совпадает с ожидаемой тестовой"):
+        ensure_truncate_safety(
+            current_database="another_test_db",
+            app_env="test",
+            test_db_url="postgresql+psycopg://user:pass@db:5432/expected_test_db",
+        )
+
+
 def test_truncate_safety_allows_valid_test_db() -> None:
     """Проверка разрешения TRUNCATE только для изолированной тестовой базы."""
     ensure_truncate_safety(
         current_database="abs_inventory_test",
         app_env="test",
+        test_db_url="postgresql+psycopg://user:pass@db:5432/abs_inventory_test",
+        prohibited_db_urls=("postgresql+psycopg://user:pass@db:5432/abs_inventory",),
     )

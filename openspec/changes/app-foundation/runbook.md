@@ -33,11 +33,12 @@ docker compose run --rm app python -m app.seeds
 docker compose run --rm test ruff check .
 docker compose run --rm test ruff format --check .
 docker compose run --rm test pytest -q
+bash scripts/test_compose_lifecycle.sh  # сквозной тест Compose на отдельном томе
 ```
 
 Сервис `test` передает `APP_ENV=test`, изолированный `TEST_DATABASE_URL` и рабочий `MAIN_DATABASE_URL`. В коде действует двухуровневый защитный отказ:
-1. Сессионная фикстура проверяет `APP_ENV == 'test'`, наличие `TEST_DATABASE_URL` и его отличие от рабочей БД до применения миграций.
-2. Фикстура сессий БД блокирует выполнение `TRUNCATE`, если целевая база не является тестовой.
+1. Сессионная фикстура проверяет `APP_ENV == 'test'`, наличие `TEST_DATABASE_URL` и его отличие от рабочей БД (включая исходный `DATABASE_URL` с нестандартным именем) до подмены переменных и применения миграций.
+2. Фикстура сессий БД блокирует выполнение `TRUNCATE`, если целевая база не является тестовой (обязательно наличие `'test'` в имени БД и несовпадение с рабочими URL).
 
 Локальное виртуальное окружение и установка зависимостей в системный Python не нужны.
 

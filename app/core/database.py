@@ -107,10 +107,17 @@ def check_database_readiness() -> tuple[bool, str]:
                     text("SELECT version_num FROM alembic_version LIMIT 1")
                 ).scalar()
             except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 return False, "migration_missing"
 
             expected_rev = get_expected_migration_head()
-            if expected_rev and current_rev != expected_rev:
+            if not expected_rev:
+                return False, "migration_head_unknown"
+
+            if current_rev != expected_rev:
                 return False, "migration_mismatch"
 
             # 3. Проверка наличия всех предметных таблиц

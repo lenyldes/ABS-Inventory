@@ -15,13 +15,20 @@ from app.core.config import get_settings
 from app.core.database import get_engine, get_session_factory
 from tests.safety import ensure_truncate_safety, validate_test_database_safety
 
+# Фиксируем исходный DATABASE_URL окружения до любых возможных замен тестовыми фикстурами
+_INITIAL_DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_database() -> None:
     """Гарантирует безопасность окружения тестов и применяет миграции Alembic."""
     app_env = os.getenv("APP_ENV")
     test_db_url = os.getenv("TEST_DATABASE_URL")
+    # До замены DATABASE_URL определяем адрес рабочей БД:
+    # явный MAIN_DATABASE_URL либо исходный DATABASE_URL (если MAIN_DATABASE_URL не задан)
     main_db_url = os.getenv("MAIN_DATABASE_URL")
+    if not main_db_url and _INITIAL_DATABASE_URL:
+        main_db_url = _INITIAL_DATABASE_URL
 
     # Валидация безопасности: защитный отказ до любых действий с БД
     validate_test_database_safety(
@@ -65,9 +72,15 @@ def db_session() -> Generator[Session, None, None]:
     engine = get_engine()
 
     # Защитный барьер перед TRUNCATE
+    main_db_candidate = os.getenv("MAIN_DATABASE_URL")
+    if not main_db_candidate and _INITIAL_DATABASE_URL != os.getenv("TEST_DATABASE_URL"):
+        main_db_candidate = _INITIAL_DATABASE_URL
+
     ensure_truncate_safety(
         current_database=engine.url.database,
         app_env=os.getenv("APP_ENV"),
+        test_db_url=os.getenv("TEST_DATABASE_URL"),
+        prohibited_db_urls=(main_db_candidate,) if main_db_candidate else (),
     )
 
     # Очистка всех предметных таблиц

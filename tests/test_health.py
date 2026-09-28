@@ -58,3 +58,19 @@ def test_health_unhealthy_and_no_secrets(
     raw_text = response.text.lower()
     for sensitive in ("password", "secret", "postgresql", "psycopg", "5432"):
         assert sensitive not in raw_text
+
+
+def test_health_unknown_migration_head(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверка возврата кода 503 со статусом migration_head_unknown."""
+    monkeypatch.setattr(
+        "app.api.health.check_database_readiness",
+        lambda: (False, "migration_head_unknown"),
+    )
+
+    response = client.get("/health")
+    assert response.status_code == 503
+    data = response.json()
+    assert data == {"status": "unhealthy", "database": "migration_head_unknown"}
