@@ -2,12 +2,12 @@
 
 import logging
 import sys
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session_factory
+from app.core.timezone import today_in_moscow
 from app.inventory.operations import register_consume, register_receipt
 from app.inventory.repository import is_doc_number_active
 from app.models.catalog import Item, Location, Supplier
@@ -121,8 +121,7 @@ def load_seeds(session: Session) -> dict[str, int]:
     session.flush()
 
     # 5. Загрузка минимальных складских движений и партий
-    tz = ZoneInfo("Europe/Moscow")
-    base_date = datetime.now(tz).date()
+    base_date = today_in_moscow()
 
     for m in SEED_MOVEMENTS:
         loc = session.query(Location).filter(Location.code == m["location"]).first()

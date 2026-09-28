@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.core.timezone import today_in_moscow
 from app.inventory.domain import BatchSnapshot, MovementSnapshot
 from app.inventory.exceptions import (
     DocumentDuplicateError,
@@ -48,7 +49,7 @@ def validate_common_rules(
     """Общие проверки: блокировка, дата не в будущем, уникальность номера, неделимость штук."""
     acquire_stock_lock(session, item.id, location.id)
 
-    today = date.today()
+    today = today_in_moscow()
     if operation_date > today:
         raise InvalidMovementError(
             f"Дата операции {operation_date.isoformat()} не может быть "

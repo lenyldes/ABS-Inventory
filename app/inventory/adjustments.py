@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.core.timezone import today_in_moscow
 from app.inventory.calculator import calculate_stock_balance
 from app.inventory.common_validation import (
     MovementExecutionResult,
@@ -67,7 +68,7 @@ def register_writeoff(
     validate_history_sufficiency(b_snaps, m_snaps, new_movement=new_snap)
 
     all_m = m_snaps + [new_snap]
-    balance = calculate_stock_balance(b_snaps, all_m, as_of=date.today())
+    balance = calculate_stock_balance(b_snaps, all_m, as_of=today_in_moscow())
     return MovementExecutionResult(
         movement=mv,
         current_stock=balance.current_stock,
@@ -147,7 +148,7 @@ def register_return(
     validate_history_sufficiency(b_snaps, m_snaps, new_movement=new_snap)
 
     all_m = m_snaps + [new_snap]
-    balance = calculate_stock_balance(b_snaps, all_m, as_of=date.today())
+    balance = calculate_stock_balance(b_snaps, all_m, as_of=today_in_moscow())
     return MovementExecutionResult(
         movement=mv,
         current_stock=balance.current_stock,
@@ -201,7 +202,7 @@ def register_correction(
     validate_history_sufficiency(b_snaps, m_snaps, new_movement=new_snap)
 
     all_m = m_snaps + [new_snap]
-    balance = calculate_stock_balance(b_snaps, all_m, as_of=date.today())
+    balance = calculate_stock_balance(b_snaps, all_m, as_of=today_in_moscow())
     return MovementExecutionResult(
         movement=mv,
         current_stock=balance.current_stock,

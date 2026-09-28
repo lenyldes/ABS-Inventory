@@ -16,6 +16,7 @@ from app.api.stock_schemas import (
     StockSummaryResponse,
 )
 from app.core.database import get_db
+from app.core.timezone import today_in_moscow
 from app.inventory.calculator import calculate_stock_balance
 from app.inventory.common_validation import load_history
 from app.inventory.exceptions import (
@@ -59,7 +60,7 @@ def get_stock_summary(
             details={"offset": offset},
         )
 
-    calc_date = as_of or date.today()
+    calc_date = as_of or today_in_moscow()
 
     # Пары (item_id, location_id), по которым есть активные движения или партии
     m_pairs = select(Movement.item_id, Movement.location_id).distinct()
@@ -134,7 +135,7 @@ def get_stock_by_sku(
     if not item:
         raise EntityNotFoundError("Item", sku)
 
-    calc_date = as_of or date.today()
+    calc_date = as_of or today_in_moscow()
 
     if location is not None:
         target_loc = get_location_by_code(db, location)

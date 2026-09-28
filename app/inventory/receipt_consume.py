@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.core.timezone import today_in_moscow
 from app.inventory.calculator import calculate_stock_balance
 from app.inventory.common_validation import (
     MovementExecutionResult,
@@ -116,7 +117,7 @@ def register_receipt(
     _, _, b_snaps, m_snaps = load_history(session, item.id, location.id)
     validate_history_sufficiency(b_snaps, m_snaps)
 
-    balance = calculate_stock_balance(b_snaps, m_snaps, as_of=date.today())
+    balance = calculate_stock_balance(b_snaps, m_snaps, as_of=today_in_moscow())
     return MovementExecutionResult(
         movement=mv,
         current_stock=balance.current_stock,
@@ -180,7 +181,7 @@ def register_consume(
     validate_history_sufficiency(b_snaps, m_snaps, new_movement=new_mv_snap)
 
     all_m_snaps = m_snaps + [new_mv_snap]
-    balance = calculate_stock_balance(b_snaps, all_m_snaps, as_of=date.today())
+    balance = calculate_stock_balance(b_snaps, all_m_snaps, as_of=today_in_moscow())
 
     return MovementExecutionResult(
         movement=mv,
