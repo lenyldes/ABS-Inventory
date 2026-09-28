@@ -27,6 +27,14 @@ from app.inventory.exceptions import (
 )
 from app.inventory.fefo import allocate_fefo, detect_fefo_deviation
 from app.inventory.history import validate_history_sufficiency
+from app.inventory.operations import (
+    MovementExecutionResult,
+    register_consume,
+    register_correction,
+    register_receipt,
+    register_return,
+    register_writeoff,
+)
 
 __all__ = [
     "AllocationSnapshot",
@@ -39,6 +47,7 @@ __all__ = [
     "InsufficientStockError",
     "InvalidMovementError",
     "InventoryError",
+    "MovementExecutionResult",
     "MovementSnapshot",
     "MovementWarning",
     "StockBalance",
@@ -48,6 +57,11 @@ __all__ = [
     "calculate_stock_balance",
     "detect_fefo_deviation",
     "movement_sort_key",
+    "register_consume",
+    "register_correction",
+    "register_receipt",
+    "register_return",
+    "register_writeoff",
     "sort_batches_fefo",
     "sort_movements_chronological",
     "validate_history_sufficiency",
