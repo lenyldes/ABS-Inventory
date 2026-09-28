@@ -26,6 +26,7 @@ from app.inventory.repository import (
     get_purchase_order_for_update,
     get_supplier_by_id,
 )
+from app.inventory.versions import create_initial_movement_version
 from app.models.catalog import Item, Location
 
 _ZERO = Decimal("0.000")
@@ -113,6 +114,7 @@ def register_receipt(
         purchase_order_id=purchase_order_id,
         supplier_id=supplier_db_id,
     )
+    create_initial_movement_version(session, mv)
 
     _, _, b_snaps, m_snaps = load_history(session, item.id, location.id)
     validate_history_sufficiency(b_snaps, m_snaps)
@@ -156,6 +158,7 @@ def register_consume(
         doc_number=doc_number,
     )
     alloc_models = create_allocations(session, mv.id, list(allocations_data))
+    create_initial_movement_version(session, mv, allocations=alloc_models)
 
     new_alloc_snaps = tuple(
         AllocationSnapshot(

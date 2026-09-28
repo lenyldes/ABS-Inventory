@@ -18,8 +18,16 @@ ABS_APP_CONTAINER="${PROJECT_NAME}_app" \
 docker compose up -d db app
 
 echo "Ожидание готовности /health на порту ${PORT}..."
+MAX_WAIT=30
+WAITED=0
 until curl -s "http://localhost:${PORT}/health" | grep -q '"status":"healthy"'; do
     sleep 1
+    WAITED=$((WAITED + 1))
+    if [ "${WAITED}" -ge "${MAX_WAIT}" ]; then
+        echo "Ошибка: тайм-аут ожидания готовности /health на порту ${PORT}" >&2
+        COMPOSE_PROJECT_NAME="${PROJECT_NAME}" docker compose logs app >&2
+        exit 1
+    fi
 done
 echo "Сервис успешно ответил healthy 200 на чистой БД."
 
@@ -52,8 +60,16 @@ ABS_APP_CONTAINER="${PROJECT_NAME}_app" \
 docker compose up -d db app
 
 echo "Ожидание готовности после перезапуска..."
+MAX_WAIT=30
+WAITED=0
 until curl -s "http://localhost:${PORT}/health" | grep -q '"status":"healthy"'; do
     sleep 1
+    WAITED=$((WAITED + 1))
+    if [ "${WAITED}" -ge "${MAX_WAIT}" ]; then
+        echo "Ошибка: тайм-аут ожидания готовности /health после перезапуска" >&2
+        COMPOSE_PROJECT_NAME="${PROJECT_NAME}" docker compose logs app >&2
+        exit 1
+    fi
 done
 
 echo "Проверка сохранности пользовательской записи и сидов..."
