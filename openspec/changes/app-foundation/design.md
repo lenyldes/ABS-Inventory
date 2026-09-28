@@ -23,7 +23,7 @@ Docker Compose с первого шага служит средой разраб
 | Компонент | Закреплённая версия |
 |---|---|
 | Образ приложения | `python:3.11.16-slim-bookworm` |
-| Образ БД | `postgres:18.6-bookworm` |
+| Образ БД | `postgres:18.4` |
 | HTTP | `fastapi==0.141.1`, `uvicorn==0.54.0` |
 | БД и миграции | `SQLAlchemy==2.0.54`, `alembic==1.20.0`, `psycopg[binary]==3.3.6` |
 | Валидация и конфигурация | `pydantic==2.13.5`, `pydantic-settings==2.15.0` |
