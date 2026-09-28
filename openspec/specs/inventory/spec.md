@@ -90,22 +90,10 @@
 
 ### Requirement: Обязательный API склада
 Система SHALL предоставлять складские HTTP-эндпоинты:
-
-1. **POST `/api/movements`** — регистрация движения по таблице валидации:
-   - Вход JSON: `operation_date` (date $\le today$), `sku` (str), `location` (str), `type` (enum), `quantity` (Decimal(12,3)), `doc_number` (str, 1–64, уникален на объекте), `batch_number` (str|null), `expiry_date` (date|null), `unit_price` (Decimal(12,2)|null), `batch_id` (int|null), `reason` (str|null), `parent_movement_id` (int|null), `parent_allocation_id` (int|null), `purchase_order_id` (int|null), `supplier_id` (str|null; для `receipt` без заказа).
-   - Ответ 201 Created: `{"id": int, "operation_date": date, "sku": str, "location": str, "type": str, "quantity": Decimal, "doc_number": str, "current_stock": Decimal, "available_stock": Decimal, "allocations": [{"id": int, "batch_id": int, "quantity": Decimal, "unit_price": Decimal}]}` (`allocations` для `consume`).
-   - Ошибки: `400` (невалидный JSON), `404` (не найден `sku`, `location`, `batch_id`, `parent_movement_id`, `parent_allocation_id`, `purchase_order_id`, `supplier_id`), `409` (дубликат `doc_number`), `422` (будущая дата, $\le 0$ или неделимое количество, нехватка остатка, нарушение истории, несоответствие исходной строки расходу, возврат > расхода по строке).
-2. **GET `/api/movements`** — журнал движений:
-   - Query: `sku`, `location`, `type`, `date_from`, `date_to`, `sort_by` (`operation_date`|`created_at`, def `operation_date`), `sort_order` (`asc`|`desc`, def `desc`), `limit` (1..100, def 50), `offset` ($\ge 0$, def 0).
-   - Ответ 200 OK: `{"items": [{"id": int, "operation_date": date, "created_at": datetime, "sku": str, "location": str, "type": str, "quantity": Decimal, "doc_number": str, "reason": str|null, "allocations": [{"id": int, "batch_id": int, "quantity": Decimal, "unit_price": Decimal}]}], "total": int, "limit": int, "offset": int}`.
-   - Ошибки: `400` (`limit` вне [1, 100], `offset < 0`), `422` (`date_from > date_to`).
-3. **GET `/api/stock`** — сводные остатки:
-   - Query: `location`, `category`, `sku`, `as_of` (date, def today), `limit` (1..100, def 50), `offset` ($\ge 0$, def 0).
-   - Ответ 200 OK: `{"items": [{"sku": str, "name": str, "category": str, "unit": str, "location": str, "current_stock": Decimal, "available_stock": Decimal, "expired_stock": Decimal, "average_daily_consumption": Decimal|null, "days_of_stock": Decimal|null, "nearest_expiry_date": date|null}], "total": int, "limit": int, "offset": int}`.
-4. **GET `/api/stock/{sku}`** — детализация по партиям:
-   - Path: `sku`. Query: `location`, `as_of`.
-   - Ответ 200 OK: `{"sku": str, "name": str, "category": str, "unit": str, "locations": [{"location": str, "current_stock": Decimal, "available_stock": Decimal, "expired_stock": Decimal, "batches": [{"batch_id": int, "batch_number": str, "receipt_date": date, "expiry_date": date|null, "unit_price": Decimal, "quantity": Decimal, "available_quantity": Decimal, "receipt_doc_number": str}]}]}`.
-   - Ошибки: `404` (SKU не найден).
+1. `POST /api/movements` — проведение движения: регистрирует операцию по правилам валидации, возвращает 201 с пересчитанными остатками и `allocations` (для `consume`). Ошибки: 400 (невалидный JSON), 404 (не найдены связанные сущности), 409 (дубликат `doc_number`), 422 (нарушение бизнес-правил, дат или остатков).
+2. `GET /api/movements` — журнал операций: фильтры `sku`, `location`, `type`, `date_from`, `date_to`; сортировка `sort_by` (`operation_date`|`created_at`), `sort_order` (`asc`|`desc`); пагинация `limit`, `offset`, `total`.
+3. `GET /api/stock` — сводные остатки товаров по объектам: фильтры `location`, `category`, `sku`, дата `as_of`; пагинация `limit`, `offset`, `total`; поля остатка, расхода и срока годности.
+4. `GET /api/stock/{sku}` — детализация остатков и партий товара: фильтр `location`, дата `as_of`; список объектов с доступными партиями, ценами и номерами документов. Ошибка: 404 (SKU не найден).
 
 #### Scenario: Проверки запроса движения
 - **WHEN** передан неизвестный SKU или объект в POST `/api/movements`
@@ -114,3 +102,26 @@
 #### Scenario: Детализация товара
 - **WHEN** запрашивается известный SKU с несколькими партиями на разных объектах
 - **THEN** ответ разделяет объекты и партии и показывает соответствующие цены и документы.
+
+### Requirement: Стартовые складские данные
+После первого запуска система SHALL содержать минимальные партии и движения для проверки складского API на существующих товарах и объектах. Начальный остаток SHALL оформляться движением `receipt`, а не отдельным изменяемым полем. Повторная подготовка SHALL не дублировать эти движения и SHALL сохранять внесённые пользователем данные.
+
+#### Scenario: Проверка склада сразу после запуска
+- **WHEN** сервис впервые запускается с пустой базой данных
+- **THEN** через API доступны как минимум одно стартовое поступление, партия и вычисленный из движения остаток.
+
+#### Scenario: Повторная подготовка данных
+- **WHEN** сервис запускается повторно после пользовательского движения
+- **THEN** стартовые движения не дублируются, а пользовательское движение и рассчитанный с его учётом остаток сохраняются.
+
+### Requirement: Предупреждение об историческом отклонении от FEFO
+В каждой записи `consume` в `GET /api/movements` система SHALL возвращать `warnings` как массив объектов с `code`, русским `message` и `details`. Если актуальная история на дату расхода показывает, что сохранённая фактическая выдача отличается от порядка FEFO из-за позднее зарегистрированного прихода, массив SHALL содержать предупреждение с кодом `fefo_deviation` и идентификаторами фактически использованной и предшествующей по FEFO партий. При отсутствии отклонения массив SHALL быть пустым. Предупреждение SHALL не менять сохранённое распределение расхода.
+
+#### Scenario: Поздний приход меняет порядок FEFO
+- **WHEN** после расхода задним числом проведён приход партии с более ранним сроком годности, доступной на дату расхода
+- **THEN** запись расхода в журнале содержит `fefo_deviation`, а сохранённые `allocations` остаются прежними.
+
+#### Scenario: Расход соответствует актуальной истории
+- **WHEN** сохранённое распределение расхода соответствует FEFO с учётом всех зарегистрированных операций
+- **THEN** запись расхода в журнале содержит `warnings: []`.
+
