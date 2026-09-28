@@ -148,6 +148,20 @@ def build_forecast_explanation(
             source="Сумма неполученных заказов со сроком поступления позже as_of",
         )
     )
+    data_used.extend(
+        [
+            ExplanationItem(
+                name="incoming_in_horizon",
+                value=str(daily_fefo.total_incoming),
+                source="Посуточный прогноз: поставки от horizon_start до horizon_end",
+            ),
+            ExplanationItem(
+                name="expired_qty",
+                value=str(daily_fefo.total_expired),
+                source="Посуточный прогноз: списания просроченных партий на горизонте",
+            ),
+        ]
+    )
     for o in procurement_context.pending_orders:
         data_used.append(
             ExplanationItem(

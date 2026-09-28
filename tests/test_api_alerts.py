@@ -156,6 +156,29 @@ def test_get_alerts_filtering(
         expiry_date=as_of + timedelta(days=15),
         unit_price=Decimal("50.00"),
     )
+    # Дополнительные предупреждения делают оба фильтра совместного запроса значимыми.
+    register_receipt(
+        db_session,
+        item=item1,
+        location=loc1,
+        operation_date=date(2026, 9, 1),
+        quantity=Decimal("5.000"),
+        doc_number="REC-3",
+        batch_number="B-3",
+        expiry_date=as_of + timedelta(days=15),
+        unit_price=Decimal("50.00"),
+    )
+    register_receipt(
+        db_session,
+        item=item2,
+        location=loc2,
+        operation_date=date(2026, 9, 1),
+        quantity=Decimal("5.000"),
+        doc_number="REC-4",
+        batch_number="B-4",
+        expiry_date=as_of - timedelta(days=5),
+        unit_price=Decimal("50.00"),
+    )
     db_session.commit()
 
     # Фильтр по location
@@ -184,6 +207,18 @@ def test_get_alerts_filtering(
     assert r_crit.status_code == 200
     for it in r_crit.json()["items"]:
         assert it["level"] == "critical"
+
+    # Совместный фильтр отсекает warning в loc1 и critical в loc2.
+    r_loc_crit = client.get(
+        "/api/alerts",
+        params={"as_of": as_of.isoformat(), "location": "LOC-FLT-1", "level": "critical"},
+    )
+    assert r_loc_crit.status_code == 200
+    loc_crit_items = r_loc_crit.json()["items"]
+    assert len(loc_crit_items) == r_loc_crit.json()["total"] == 1
+    assert loc_crit_items[0]["location"] == "LOC-FLT-1"
+    assert loc_crit_items[0]["level"] == "critical"
+    assert loc_crit_items[0]["type"] == "expired"
 
     # Фильтр по type
     r_type = client.get(

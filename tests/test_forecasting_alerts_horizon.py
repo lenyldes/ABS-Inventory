@@ -106,6 +106,36 @@ def test_alert_dynamic_and_explicit_horizon() -> None:
     assert st_7.metrics["horizon_end"] == (BASE_AS_OF + timedelta(days=7)).isoformat()
 
 
+def test_alert_horizon_changes_writeoff_risk_after_day_30() -> None:
+    """Риск на 36-й день виден при L=45, но отсутствует на явном горизонте 7 дней."""
+    batch = make_test_batch_stock(
+        batch_id=302,
+        expiry_date=BASE_AS_OF + timedelta(days=35),
+        current_quantity=Decimal("10.000"),
+        available_quantity=Decimal("10.000"),
+    )
+    balance = make_test_balance(
+        current_stock=Decimal("10.000"),
+        available_stock=Decimal("10.000"),
+        batches=(batch,),
+    )
+    movements = make_test_movements(total_consume_90d=Decimal("0.000"))
+    procurement = make_test_procurement(lead_time_days=45)
+
+    dynamic_alerts = calculate_item_alerts(
+        "OIL-500", "MSK-01", BASE_AS_OF, balance, movements, procurement
+    )
+    dynamic_risk = next(alert for alert in dynamic_alerts if alert.type == "writeoff_risk")
+    assert dynamic_risk.metrics["expected_writeoff_qty"] == "10.000"
+    assert dynamic_risk.metrics["horizon_days"] == 46
+    assert dynamic_risk.metrics["horizon_end"] == (BASE_AS_OF + timedelta(days=46)).isoformat()
+
+    short_alerts = calculate_item_alerts(
+        "OIL-500", "MSK-01", BASE_AS_OF, balance, movements, procurement, horizon_days=7
+    )
+    assert not any(alert.type == "writeoff_risk" for alert in short_alerts)
+
+
 def test_alert_unknown_lead_time() -> None:
     """Неизвестный срок поставки L is None: дефолт 30 дней, отсутствие ложного дефицита."""
     batch = make_test_batch_stock(

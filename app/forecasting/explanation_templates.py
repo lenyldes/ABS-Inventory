@@ -29,9 +29,16 @@ def build_explanation_formulas(
     else:
         formulas.append("Точка перезаказа: не рассчитывается, так как срок поставки не указан")
 
+    if order_rec.explanation_details.get("reason") == "zero_consumption":
+        formulas.append("При нулевом расходе закупка не рекомендуется: recommended_qty = 0")
+        if order_rec.unit_price is not None:
+            formulas.append("Оценочная стоимость заказа: total_cost = 0")
+        return formulas
+
     formulas.append(
-        "Потребность к закупке: P_need = "
-        "(forecast_consumption + safety_stock) - (available_stock + incoming_qty - expired_qty)"
+        "Потребность к закупке до округления: P_need = "
+        "(a * days_count + a * service_days) - "
+        "(available_stock + incoming_in_horizon - expired_qty)"
     )
 
     if (
