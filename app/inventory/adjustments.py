@@ -25,6 +25,7 @@ from app.inventory.repository import (
     get_movements_with_allocations,
     movement_to_snapshot,
 )
+from app.inventory.versions import create_initial_movement_version
 from app.models.catalog import Item, Location
 
 _ZERO = Decimal("0.000")
@@ -63,6 +64,7 @@ def register_writeoff(
         batch_id=batch_id,
         reason=reason,
     )
+    create_initial_movement_version(session, mv)
 
     new_snap = movement_to_snapshot(mv)
     validate_history_sufficiency(b_snaps, m_snaps, new_movement=new_snap)
@@ -143,6 +145,7 @@ def register_return(
         parent_allocation_id=parent_allocation_id,
         reason=reason,
     )
+    create_initial_movement_version(session, mv)
 
     new_snap = movement_to_snapshot(mv)
     validate_history_sufficiency(b_snaps, m_snaps, new_movement=new_snap)
@@ -197,6 +200,7 @@ def register_correction(
         batch_id=batch_id,
         reason=reason,
     )
+    create_initial_movement_version(session, mv)
 
     new_snap = movement_to_snapshot(mv)
     validate_history_sufficiency(b_snaps, m_snaps, new_movement=new_snap)
