@@ -23,6 +23,7 @@ from app.inventory.exceptions import (
     HistoricalSufficiencyError,
     InsufficientStockError,
     InvalidMovementError,
+    InvalidPaginationError,
     InventoryError,
 )
 from app.inventory.fefo import allocate_fefo, detect_fefo_deviation
@@ -46,6 +47,7 @@ __all__ = [
     "HistoricalSufficiencyError",
     "InsufficientStockError",
     "InvalidMovementError",
+    "InvalidPaginationError",
     "InventoryError",
     "MovementExecutionResult",
     "MovementSnapshot",

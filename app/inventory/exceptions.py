@@ -137,3 +137,14 @@ class EntityNotFoundError(InventoryError):
         message = f"Сущность {entity_name} с идентификатором '{identifier}' не найдена"
         details = {"entity": entity_name, "identifier": str(identifier)}
         super().__init__(message=message, code="NOT_FOUND", details=details)
+
+
+class InvalidPaginationError(InventoryError):
+    """Недопустимые параметры пагинации (limit, offset)."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
+        super().__init__(
+            message=message,
+            code="INVALID_PAGINATION",
+            details=details or {},
+        )
