@@ -166,6 +166,9 @@ def test_post_forecast_spec_scenario(
     assumptions_text = " ".join(expl["assumptions"])
     assert "ориентировочная цена" in assumptions_text
     assert "годными" in assumptions_text
+    assert "ROUND_HALF_UP" in assumptions_text
+    assert "количества — до 3 знаков" in assumptions_text
+    assert "цена и стоимость — до 2 знаков" in assumptions_text
 
 
 def test_post_forecast_validation_bad_request_400(

@@ -135,32 +135,48 @@ def test_post_forecast_late_correction_scenario(
     assert resp1.status_code == 200
     assert resp1.json()["current_stock"] == "10.000"
 
-    # 2. Исправление поступления: отмена старого и регистрация нового на 50 л
-    rec_res.movement.status = "cancelled"
-    db_session.commit()
-
-    register_receipt(
-        db_session,
-        item=item,
-        location=location,
-        operation_date=date(2026, 8, 1),
-        quantity=Decimal("50.000"),
-        doc_number="REC-AMENDED",
-        batch_number="B-AMENDED",
-        unit_price=Decimal("100.00"),
-        expiry_date=date(2027, 8, 1),
-    )
-    db_session.commit()
-
-    # 3. Повторный расчёт на ту же дату as_of
-    resp2 = client.post(
-        "/api/forecast",
+    # 2. Позднее исправление через публичный API: увеличить приход до 50 л.
+    preview = client.post(
+        "/api/amendments/preview",
         json={
-            "sku": item.sku,
-            "location": location.code,
-            "as_of": as_of.isoformat(),
-            "horizon_days": 14,
+            "reason": "Уточнение количества по накладной",
+            "operations": [
+                {
+                    "movement_id": rec_res.movement.id,
+                    "action": "update",
+                    "expected_version": 1,
+                    "fields": {"quantity": "50.000"},
+                }
+            ],
         },
     )
+    assert preview.status_code == 200, preview.text
+    preview_data = preview.json()
+    assert preview_data["can_apply"] is True
+
+    # Preview не меняет прогноз, пока исправление не подтверждено.
+    forecast_payload = {
+        "sku": item.sku,
+        "location": location.code,
+        "as_of": as_of.isoformat(),
+        "horizon_days": 14,
+    }
+    before_confirm = client.post("/api/forecast", json=forecast_payload)
+    assert before_confirm.status_code == 200
+    assert before_confirm.json()["current_stock"] == "10.000"
+
+    confirm = client.post(
+        "/api/amendments/confirm",
+        json={
+            "preview_id": preview_data["preview_id"],
+            "version_signature": preview_data["version_signature"],
+            "reason": "Уточнение количества по накладной",
+        },
+    )
+    assert confirm.status_code == 200, confirm.text
+    assert confirm.json()["status"] == "applied"
+
+    # 3. Повторный расчёт на ту же дату as_of
+    resp2 = client.post("/api/forecast", json=forecast_payload)
     assert resp2.status_code == 200
     assert resp2.json()["current_stock"] == "50.000"
