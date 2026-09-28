@@ -58,8 +58,8 @@ def test_get_stock_summary_and_null_metrics(
     assert row["available_stock"] == "10.000"
     assert row["expired_stock"] == "0.000"
     assert row["nearest_expiry_date"] == "2026-12-31"
-    # Показатели этапа 07 обязаны быть null
-    assert row["average_daily_consumption"] is None
+    # При отсутствии расхода средний расход равен 0.000000, а дни запаса null
+    assert row["average_daily_consumption"] == "0.000000"
     assert row["days_of_stock"] is None
 
 
