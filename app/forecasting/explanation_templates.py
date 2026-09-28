@@ -16,6 +16,8 @@ def build_explanation_formulas(
 ) -> list[str]:
     """Формирует список формул, применённых в расчёте потребности."""
     formulas: list[str] = [
+        "Чистый расход за 90 дней: total_consumption_90d = "
+        "sum(max(0, расход - связанные возвраты) по списаниям 90-дневного окна)",
         "Среднесуточный расход: a = total_consumption_90d / 90",
         "Прогноз расхода на горизонт: forecast_consumption = round(a * days_count, 3)",
         "Страховой запас: safety_stock = round(a * service_days, 3)",

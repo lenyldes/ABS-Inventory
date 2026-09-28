@@ -1,10 +1,10 @@
 """Pydantic-схемы для запроса и ответа эндпоинта POST /api/forecast."""
 
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class ForecastRequest(BaseModel):
@@ -41,6 +41,18 @@ class DailyForecastItem(BaseModel):
     expired: Decimal
     closing_stock: Decimal
     daily_deficit: Decimal
+
+    @field_serializer(
+        "consumption",
+        "incoming",
+        "expired",
+        "closing_stock",
+        "daily_deficit",
+        when_used="json",
+    )
+    def serialize_quantity(self, value: Decimal) -> str:
+        """Округляет суточные показатели только при формировании JSON-ответа."""
+        return str(value.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP))
 
 
 class ExplanationItemSchema(BaseModel):

@@ -46,6 +46,15 @@ def calculate_item_alerts(
     else:
         effective_horizon_days = max(30, lead_time + 1) if lead_time is not None else 30
 
+    calculation_limit: str | None = None
+    if lead_time is None:
+        calculation_limit = (
+            "Срок поставки не задан: оценка дефицита до прибытия и точка заказа "
+            "недоступны; горизонт по умолчанию составляет 30 дней"
+            if horizon_days is None
+            else "Срок поставки не задан: оценка дефицита до прибытия и точка заказа недоступны"
+        )
+
     _, horizon_end, _ = compute_horizon_dates(as_of=as_of, horizon_days=effective_horizon_days)
 
     consumption = calculate_consumption_metrics(
@@ -115,6 +124,7 @@ def calculate_item_alerts(
         stockout_date=daily_fefo.stockout_date,
         reorder_point=order_rec.reorder_point,
         order_date=order_rec.order_date,
+        calculation_limit=calculation_limit,
     )
     alerts.extend(deficit_alerts)
 
@@ -128,6 +138,7 @@ def calculate_item_alerts(
         total_expired_forecast=daily_fefo.total_expired,
         effective_horizon_days=effective_horizon_days,
         horizon_end=horizon_end,
+        calculation_limit=calculation_limit,
     )
     alerts.extend(shelf_life_alerts)
 

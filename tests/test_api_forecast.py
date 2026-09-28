@@ -69,13 +69,13 @@ def test_post_forecast_spec_scenario(
         unit_price=Decimal("260.00"),
     )
 
-    # Расход 45 л (списывает 30 л из B-01 и 15 л из B-02; остаток в B-02 = 5 л)
+    # Расход 15 л оставляет две партии с ненулевыми остатками: 15 л и 20 л.
     register_consume(
         db_session,
         item=item,
         location=location,
         operation_date=date(2026, 8, 15),
-        quantity=Decimal("45.000"),
+        quantity=Decimal("15.000"),
         doc_number="CON-01",
     )
 
@@ -111,16 +111,16 @@ def test_post_forecast_spec_scenario(
     assert data["horizon_end"] == "2026-10-01"
     assert data["days_count"] == 30
 
-    # Метрики потребления: расход 45 за 90 дней -> 0.500000
-    assert data["average_daily_consumption"] == "0.500000"
-    assert data["forecast_consumption"] == "15.000"
-    assert data["safety_stock"] == "5.000"
-    assert data["current_stock"] == "5.000"
-    assert data["available_stock"] == "5.000"
+    # Метрики потребления: расход 15 за 90 дней -> 0.166667
+    assert data["average_daily_consumption"] == "0.166667"
+    assert data["forecast_consumption"] == "5.000"
+    assert data["safety_stock"] == "1.667"
+    assert data["current_stock"] == "35.000"
+    assert data["available_stock"] == "35.000"
     assert data["incoming_qty"] == "15.000"
 
-    # Точка перезаказа: 0.5 * (5 + 10) = 7.500
-    assert data["reorder_point"] == "7.500"
+    # Точка перезаказа: 0.166667 * (5 + 10) = 2.500
+    assert data["reorder_point"] == "2.500"
     assert data["unit_price"] == "250.00"
     assert data["total_cost"] is not None
 
@@ -140,17 +140,22 @@ def test_post_forecast_spec_scenario(
     assert "formulas" in expl
     assert "assumptions" in expl
 
-    data_used_names = {item["name"] for item in expl["data_used"]}
-    assert "total_consumption_90d" in data_used_names
-    assert "average_daily_consumption" in data_used_names
-    assert "current_stock" in data_used_names
-    assert "available_stock" in data_used_names
-    assert "incoming_qty" in data_used_names
-    assert "unit_price" in data_used_names
-
-    # Наличие остатка партии и заказа в data_used
-    assert any("B-02" in item["name"] for item in expl["data_used"])
-    assert any("PO-101" in item["name"] for item in expl["data_used"])
+    data_used = {entry["name"]: entry for entry in expl["data_used"]}
+    assert data_used["total_consumption_90d"]["value"] == "15.000"
+    assert "Журнал движений" in data_used["gross_consumption_90d"]["source"]
+    assert data_used["average_daily_consumption"]["value"] == "0.166667"
+    assert data_used["current_stock"]["value"] == "35.000"
+    assert data_used["available_stock"]["value"] == "35.000"
+    assert data_used["batch_B-01"]["value"] == "15.000"
+    assert "поступление 2026-06-01" in data_used["batch_B-01"]["source"]
+    assert data_used["batch_B-02"]["value"] == "20.000"
+    assert "поступление 2026-07-01" in data_used["batch_B-02"]["source"]
+    assert data_used["incoming_qty"]["value"] == "15.000"
+    assert "неполученных заказов" in data_used["incoming_qty"]["source"]
+    assert data_used["pending_order_PO-101"]["value"] == "15.000"
+    assert "ожидаемая дата 2026-09-10" in data_used["pending_order_PO-101"]["source"]
+    assert data_used["unit_price"]["value"] == "250.00"
+    assert "Ориентировочная цена" in data_used["unit_price"]["source"]
 
     # Формулы
     formulas_text = " ".join(expl["formulas"])

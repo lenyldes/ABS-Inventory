@@ -23,6 +23,7 @@ def evaluate_deficit_alerts(
     stockout_date: date | None,
     reorder_point: Decimal | None,
     order_date: date | None,
+    calculation_limit: str | None = None,
 ) -> list[AlertItem]:
     """Формирует предупреждения о критическом и потенциальном дефиците запаса."""
     alerts: list[AlertItem] = []
@@ -50,6 +51,8 @@ def evaluate_deficit_alerts(
         }
         if stockout_date is not None:
             stockout_metrics["stockout_date"] = stockout_date.isoformat()
+        if calculation_limit is not None:
+            stockout_metrics["calculation_limit"] = calculation_limit
 
         alerts.append(
             AlertItem(
@@ -88,6 +91,7 @@ def evaluate_deficit_alerts(
                     "days_of_stock": str(days_of_stock) if days_of_stock is not None else None,
                     "horizon_days": effective_horizon_days,
                     "horizon_end": horizon_end.isoformat(),
+                    **({"calculation_limit": calculation_limit} if calculation_limit else {}),
                 },
                 as_of=as_of,
             )

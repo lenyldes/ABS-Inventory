@@ -62,11 +62,11 @@ class DailyForecastStep:
     """Шаг суточного моделирования FEFO."""
 
     date: date
-    consumption: Decimal  # фактически списанный суточный расход (Decimal(12, 3))
-    incoming: Decimal  # поступившее количество ожидаемой поставки (Decimal(12, 3))
-    expired: Decimal  # списано по сроку годности на начало дня (Decimal(12, 3))
-    closing_stock: Decimal  # доступный остаток на конец дня (Decimal(12, 3))
-    daily_deficit: Decimal  # непокрытый суточный дефицит (Decimal(12, 3))
+    consumption: Decimal  # фактически списанный суточный расход без округления
+    incoming: Decimal  # поступившее количество ожидаемой поставки без округления
+    expired: Decimal  # списано по сроку годности на начало дня без округления
+    closing_stock: Decimal  # доступный остаток на конец дня без округления
+    daily_deficit: Decimal  # непокрытый суточный дефицит без округления
 
 
 @dataclass(frozen=True)

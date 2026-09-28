@@ -17,6 +17,7 @@ def evaluate_shelf_life_alerts(
     total_expired_forecast: Decimal,
     effective_horizon_days: int,
     horizon_end: date,
+    calculation_limit: str | None = None,
 ) -> list[AlertItem]:
     """Формирует предупреждения о просрочке, приближении срока и риске списания."""
     alerts: list[AlertItem] = []
@@ -99,9 +100,10 @@ def evaluate_shelf_life_alerts(
                     f"{total_expired_forecast} ед. на горизонте прогноза"
                 ),
                 metrics={
-                    "expected_writeoff_qty": str(total_expired_forecast),
+                    "expected_writeoff_qty": str(total_expired_forecast.quantize(Decimal("0.001"))),
                     "horizon_days": effective_horizon_days,
                     "horizon_end": horizon_end.isoformat(),
+                    **({"calculation_limit": calculation_limit} if calculation_limit else {}),
                 },
                 as_of=as_of,
             )

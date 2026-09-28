@@ -32,8 +32,10 @@ def calculate_order_recommendation(
     d_count = daily_fefo.days_count if daily_fefo else days_count
     a = average_daily_consumption
 
-    forecast_consumption = (a * Decimal(d_count)).quantize(_QTY_QUANT, rounding=ROUND_HALF_UP)
-    safety_stock = (a * Decimal(service_days)).quantize(_QTY_QUANT, rounding=ROUND_HALF_UP)
+    raw_forecast_consumption = a * Decimal(d_count)
+    raw_safety_stock = a * Decimal(service_days)
+    forecast_consumption = raw_forecast_consumption.quantize(_QTY_QUANT, rounding=ROUND_HALF_UP)
+    safety_stock = raw_safety_stock.quantize(_QTY_QUANT, rounding=ROUND_HALF_UP)
 
     # Точка заказа: a * (L + S). Если L неизвестен -> None
     if lead_time_days is None:
@@ -78,7 +80,7 @@ def calculate_order_recommendation(
         # Поиск дня падения доступного остатка ниже порога
         # При S = 0 порог — падение до 0 (stockout_date)
         # При S > 0 порог — safety_stock
-        threshold = safety_stock if service_days > 0 else _ZERO_QTY
+        threshold = raw_safety_stock if service_days > 0 else _ZERO_QTY
         drop_date: date | None = None
 
         for step in daily_fefo.daily_steps:
@@ -117,7 +119,7 @@ def calculate_order_recommendation(
         tot_expired = _ZERO_QTY
 
     usable_stock = available_stock + tot_incoming - tot_expired
-    p_need = (forecast_consumption + safety_stock) - usable_stock
+    p_need = (raw_forecast_consumption + raw_safety_stock) - usable_stock
 
     if service_days == 0 and (
         daily_fefo is not None and daily_fefo.total_deficit <= _ZERO_QTY and stockout_date is None

@@ -127,6 +127,7 @@ def post_forecast(
         service_days=req.service_days,
         balance=balance,
         consumption_metrics=consumption_metrics,
+        movements=inputs.movements,
         daily_fefo=daily_fefo,
         procurement_context=inputs.procurement_context,
         order_rec=order_rec,

@@ -128,6 +128,58 @@ def test_alert_unknown_lead_time() -> None:
     assert not any(a.type == "potential_stockout" for a in alerts)
 
 
+def test_unknown_lead_time_is_explained_in_forecast_alerts() -> None:
+    """Дефицит и риск списания раскрывают ограничение при неизвестном сроке поставки."""
+    movements = make_test_movements(total_consume_90d=Decimal("45.000"))
+    procurement = make_test_procurement(lead_time_days=None)
+    empty_balance = make_test_balance(current_stock=Decimal("0"), available_stock=Decimal("0"))
+
+    stockout_alerts = calculate_item_alerts(
+        "OIL-500", "MSK-01", BASE_AS_OF, empty_balance, movements, procurement
+    )
+    stockout = next(alert for alert in stockout_alerts if alert.type == "stockout")
+    assert stockout.metrics["horizon_days"] == 30
+    assert stockout.metrics["horizon_end"] == (BASE_AS_OF + timedelta(days=30)).isoformat()
+    assert "Срок поставки не задан" in stockout.metrics["calculation_limit"]
+    assert "30 дней" in stockout.metrics["calculation_limit"]
+
+    batch = make_test_batch_stock(
+        expiry_date=BASE_AS_OF + timedelta(days=10),
+        current_quantity=Decimal("10.000"),
+        available_quantity=Decimal("10.000"),
+    )
+    balance = make_test_balance(batches=(batch,))
+    writeoff_alerts = calculate_item_alerts(
+        "OIL-500", "MSK-01", BASE_AS_OF, balance, movements, procurement
+    )
+    writeoff = next(alert for alert in writeoff_alerts if alert.type == "writeoff_risk")
+    assert writeoff.metrics["horizon_days"] == 30
+    assert writeoff.metrics["calculation_limit"] == stockout.metrics["calculation_limit"]
+    assert all(
+        "calculation_limit" not in alert.metrics
+        for alert in writeoff_alerts
+        if alert.type == "expiring_soon"
+    )
+
+
+def test_explicit_horizon_with_unknown_lead_time_keeps_limitation() -> None:
+    """Явный горизонт не скрывает невозможность оценить срок прибытия."""
+    balance = make_test_balance(current_stock=Decimal("0"), available_stock=Decimal("0"))
+    alerts = calculate_item_alerts(
+        "OIL-500",
+        "MSK-01",
+        BASE_AS_OF,
+        balance,
+        make_test_movements(),
+        make_test_procurement(lead_time_days=None),
+        horizon_days=7,
+    )
+    stockout = next(alert for alert in alerts if alert.type == "stockout")
+    assert stockout.metrics["horizon_days"] == 7
+    assert "Срок поставки не задан" in stockout.metrics["calculation_limit"]
+    assert "30 дней" not in stockout.metrics["calculation_limit"]
+
+
 def test_alert_threshold_validations() -> None:
     """Ошибки валидации при некорректных порогах и горизонте."""
     balance = make_test_balance()

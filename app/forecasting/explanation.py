@@ -1,6 +1,7 @@
 """Формирование структурированного объяснения прогноза и списка предупреждений."""
 
-from datetime import date
+from collections.abc import Sequence
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app.forecasting.domain import (
@@ -16,7 +17,44 @@ from app.forecasting.explanation_templates import (
     build_explanation_formulas,
     build_forecast_warnings,
 )
-from app.inventory.domain import StockBalance
+from app.inventory.domain import MovementSnapshot, StockBalance
+
+
+def _consumption_sources(
+    movements: Sequence[MovementSnapshot], as_of: date
+) -> tuple[Decimal, list[ExplanationItem]]:
+    """Находит исходный расход и связанные возвраты, учтённые за 90 дней."""
+    window_start = as_of - timedelta(days=89)
+    consumes = {
+        movement.id: movement
+        for movement in movements
+        if movement.status == "active"
+        and movement.type == "consume"
+        and movement.id is not None
+        and window_start <= movement.operation_date <= as_of
+    }
+    gross_consumption = sum((movement.quantity for movement in consumes.values()), Decimal("0.000"))
+    returns = [
+        movement
+        for movement in movements
+        if movement.status == "active"
+        and movement.type == "return"
+        and movement.operation_date <= as_of
+        and movement.parent_movement_id in consumes
+    ]
+    return_items = [
+        ExplanationItem(
+            name=f"linked_return_{movement.id}",
+            value=str(movement.quantity),
+            source=(
+                f"Журнал движений: возврат {movement.doc_number} (id={movement.id}) "
+                f"к расходу {consumes[movement.parent_movement_id].doc_number} "
+                f"(id={movement.parent_movement_id})"
+            ),
+        )
+        for movement in returns
+    ]
+    return gross_consumption, return_items
 
 
 def build_forecast_explanation(
@@ -25,6 +63,7 @@ def build_forecast_explanation(
     service_days: int,
     balance: StockBalance,
     consumption_metrics: ConsumptionMetrics,
+    movements: Sequence[MovementSnapshot],
     daily_fefo: DailyFefoResult,
     procurement_context: ProcurementContext,
     order_rec: OrderRecommendation,
@@ -33,11 +72,23 @@ def build_forecast_explanation(
 
     Включает data_used, formulas и assumptions.
     """
+    gross_consumption, return_items = _consumption_sources(movements, as_of)
+    returned_qty = sum((Decimal(item.value) for item in return_items), Decimal("0.000"))
     data_used: list[ExplanationItem] = [
+        ExplanationItem(
+            name="gross_consumption_90d",
+            value=str(gross_consumption),
+            source="Журнал движений: активные списания за 90 календарных дней до as_of",
+        ),
+        ExplanationItem(
+            name="linked_returns_90d",
+            value=str(returned_qty),
+            source="Журнал движений: активные возвраты к списаниям 90-дневного окна на as_of",
+        ),
         ExplanationItem(
             name="total_consumption_90d",
             value=str(consumption_metrics.total_consumption_90d),
-            source="Журнал движений: суммарный чистый расход за 90 календарных дней",
+            source="Расчёт: исходный расход за 90 дней за вычетом связанных возвратов",
         ),
         ExplanationItem(
             name="average_daily_consumption",
@@ -70,6 +121,7 @@ def build_forecast_explanation(
             source="Годный остаток склада без учёта просроченных партий",
         ),
     ]
+    data_used.extend(return_items)
 
     for b in balance.batches:
         if b.available_quantity > Decimal("0.000"):

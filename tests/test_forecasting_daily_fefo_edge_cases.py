@@ -1,12 +1,15 @@
 """Граничные тесты чистых календарных и суточных расчётов FEFO (задача 2.1)."""
 
+import json
 from datetime import date
 from decimal import Decimal
 
 import pytest
 
+from app.api.forecast_schemas import DailyForecastItem
 from app.forecasting.daily_fefo import simulate_daily_fefo
 from app.forecasting.domain import IncomingOrderSnapshot
+from app.forecasting.order_calculation import calculate_order_recommendation
 from app.inventory.domain import BatchSnapshot
 
 
@@ -105,3 +108,83 @@ def test_negative_consumption_raises_error() -> None:
             batches=[],
             horizon_days=3,
         )
+
+
+def test_small_daily_consumption_retains_precision_until_response() -> None:
+    """Малый расход не исчезает при моделировании и совпадает с прогнозом за горизонт."""
+    as_of = date(2026, 10, 1)
+    daily_average = Decimal("0.000400")
+    result = simulate_daily_fefo(
+        as_of=as_of,
+        average_daily_consumption=daily_average,
+        batches=[],
+        horizon_days=5,
+    )
+    recommendation = calculate_order_recommendation(
+        as_of=as_of,
+        average_daily_consumption=daily_average,
+        days_count=5,
+        daily_fefo=result,
+    )
+
+    assert result.first_deficit_date == date(2026, 10, 2)
+    assert all(step.daily_deficit == daily_average for step in result.daily_steps)
+    assert result.total_deficit == recommendation.forecast_consumption == Decimal("0.002")
+
+    first_day = DailyForecastItem(**vars(result.daily_steps[0]))
+    serialized = json.loads(first_day.model_dump_json())
+    assert serialized["daily_deficit"] == "0.000"
+    assert first_day.daily_deficit == daily_average
+
+
+def test_small_consumption_uses_precise_stock_for_order_date() -> None:
+    """Округлённый дневной остаток не сдвигает дату исчерпания и заказа."""
+    as_of = date(2026, 10, 1)
+    batch = _make_batch(1, date(2026, 9, 1), None)
+    result = simulate_daily_fefo(
+        as_of=as_of,
+        average_daily_consumption=Decimal("0.000400"),
+        batches=[batch],
+        batch_stocks={1: Decimal("0.001")},
+        horizon_days=3,
+    )
+    recommendation = calculate_order_recommendation(
+        as_of=as_of,
+        average_daily_consumption=Decimal("0.000400"),
+        days_count=3,
+        lead_time_days=1,
+        daily_fefo=result,
+        available_stock=Decimal("0.001"),
+    )
+
+    assert result.daily_steps[1].closing_stock == Decimal("0.000200")
+    assert result.stockout_date == date(2026, 10, 4)
+    assert result.first_deficit_date == date(2026, 10, 4)
+    assert recommendation.stockout_date == date(2026, 10, 4)
+    assert recommendation.order_date == date(2026, 10, 3)
+
+
+def test_small_safety_stock_uses_precise_threshold_and_need() -> None:
+    """Страховой запас ниже 0,001 участвует в дате и объёме заказа."""
+    as_of = date(2026, 10, 1)
+    batch = _make_batch(1, date(2026, 9, 1), None)
+    result = simulate_daily_fefo(
+        as_of=as_of,
+        average_daily_consumption=Decimal("0.000400"),
+        batches=[batch],
+        batch_stocks={1: Decimal("0.001")},
+        horizon_days=3,
+    )
+    recommendation = calculate_order_recommendation(
+        as_of=as_of,
+        average_daily_consumption=Decimal("0.000400"),
+        days_count=3,
+        service_days=1,
+        lead_time_days=0,
+        daily_fefo=result,
+        available_stock=Decimal("0.001"),
+    )
+
+    assert recommendation.safety_stock == Decimal("0.000")
+    assert recommendation.order_date == date(2026, 10, 3)
+    assert recommendation.recommended_qty == Decimal("0.001")

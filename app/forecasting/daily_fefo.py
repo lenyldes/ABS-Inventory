@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from app.forecasting.domain import (
     DailyFefoResult,
@@ -14,7 +14,6 @@ from app.forecasting.domain import (
 from app.inventory.domain import BatchSnapshot
 
 _ZERO_QTY = Decimal("0.000")
-_QTY_QUANT = Decimal("0.001")
 
 
 @dataclass
@@ -76,7 +75,7 @@ def simulate_daily_fefo(
                     receipt_date=b.receipt_date,
                     created_at=b.created_at or datetime.min,
                     lot_type=0,
-                    remaining_qty=qty.quantize(_QTY_QUANT),
+                    remaining_qty=qty,
                 )
             )
 
@@ -87,7 +86,14 @@ def simulate_daily_fefo(
 
     daily_steps: list[DailyForecastStep] = []
     current_date = horizon_start
-    daily_demand = average_daily_consumption.quantize(_QTY_QUANT, rounding=ROUND_HALF_UP)
+    daily_demand = average_daily_consumption
+    stockout_date: date | None = None
+    first_deficit_date: date | None = None
+    total_incoming = _ZERO_QTY
+    total_consumption = _ZERO_QTY
+    total_expired = _ZERO_QTY
+    total_deficit = _ZERO_QTY
+    has_temporary_stockout = False
 
     while current_date <= horizon_end:
         # 1. Списание просрочки: партии с expiry_date < current_date
@@ -104,7 +110,7 @@ def simulate_daily_fefo(
         incoming_today = _ZERO_QTY
         orders_today = future_orders_by_date.get(current_date, [])
         for ord_item in orders_today:
-            inc_qty = ord_item.pending_qty.quantize(_QTY_QUANT)
+            inc_qty = ord_item.pending_qty
             incoming_today += inc_qty
             active_lots.append(
                 _SimulationLot(
@@ -131,49 +137,38 @@ def simulate_daily_fefo(
             needed -= take
 
         active_lots = [lot for lot in active_lots if lot.remaining_qty > _ZERO_QTY]
-        deficit_today = (daily_demand - consumed_today).quantize(_QTY_QUANT)
-        closing_stock = sum((lot.remaining_qty for lot in active_lots), _ZERO_QTY).quantize(
-            _QTY_QUANT
-        )
+        deficit_today = daily_demand - consumed_today
+        closing_stock = sum((lot.remaining_qty for lot in active_lots), _ZERO_QTY)
+
+        total_incoming += incoming_today
+        total_consumption += consumed_today
+        total_expired += expired_today
+        total_deficit += deficit_today
+        if daily_demand > _ZERO_QTY and closing_stock <= _ZERO_QTY and stockout_date is None:
+            stockout_date = current_date
+        if deficit_today > _ZERO_QTY and first_deficit_date is None:
+            first_deficit_date = current_date
+        if (
+            first_deficit_date is not None
+            and current_date > first_deficit_date
+            and incoming_today > _ZERO_QTY
+        ):
+            has_temporary_stockout = True
 
         daily_steps.append(
             DailyForecastStep(
                 date=current_date,
-                consumption=consumed_today.quantize(_QTY_QUANT),
-                incoming=incoming_today.quantize(_QTY_QUANT),
-                expired=expired_today.quantize(_QTY_QUANT),
+                consumption=consumed_today,
+                incoming=incoming_today,
+                expired=expired_today,
                 closing_stock=closing_stock,
                 daily_deficit=deficit_today,
             )
         )
         current_date += timedelta(days=1)
 
-    steps_tuple = tuple(daily_steps)
-
-    # Агрегаты
-    stockout_date: date | None = None
-    if average_daily_consumption > _ZERO_QTY:
-        stockout_date = next(
-            (s.date for s in steps_tuple if s.closing_stock <= _ZERO_QTY),
-            None,
-        )
-
-    first_deficit_date = next(
-        (s.date for s in steps_tuple if s.daily_deficit > _ZERO_QTY),
-        None,
-    )
-
-    total_incoming = sum((s.incoming for s in steps_tuple), _ZERO_QTY).quantize(_QTY_QUANT)
-    total_consumption = sum((s.consumption for s in steps_tuple), _ZERO_QTY).quantize(_QTY_QUANT)
-    total_expired = sum((s.expired for s in steps_tuple), _ZERO_QTY).quantize(_QTY_QUANT)
-    total_deficit = sum((s.daily_deficit for s in steps_tuple), _ZERO_QTY).quantize(_QTY_QUANT)
-
-    has_temporary_stockout = first_deficit_date is not None and any(
-        s.date > first_deficit_date and s.incoming > _ZERO_QTY for s in steps_tuple
-    )
-
     return DailyFefoResult(
-        daily_steps=steps_tuple,
+        daily_steps=tuple(daily_steps),
         horizon_start=horizon_start,
         horizon_end=horizon_end,
         days_count=days_count,
