@@ -15,7 +15,6 @@ from app.demo_data.movements import (
     DEMO_BASE_RECEIPT_OFFSET,
     DEMO_BATCH_NUMBERS,
     DEMO_MOVEMENT_DOC_NUMBERS,
-    build_demo_movement_definitions,
 )
 from app.demo_data.orders import DEMO_ORDER_DOC_NUMBERS
 from app.models.catalog import Item, Location, Supplier
@@ -25,6 +24,9 @@ from app.models.procurement import PurchaseOrder, SupplierCondition
 
 class DemoDataError(Exception):
     """Базовое исключение для ошибок демонстрационных данных."""
+
+
+from app.demo_data.inspection_values import verify_demo_values  # noqa: E402
 
 
 def detect_demo_as_of(session: Session) -> date | None:
@@ -126,57 +128,3 @@ def verify_demo_keys(
 
     if as_of is not None:
         verify_demo_values(session, as_of)
-
-
-def verify_demo_values(session: Session, as_of: date) -> None:
-    """Сверяет значимые поля записей демонстрационного набора с эталоном.
-
-    Проверяет количества, даты и типы складских движений, а также
-    сроки годности связанных партий. При расхождениях вызывает DemoDataError.
-    """
-    expected_defs = build_demo_movement_definitions()
-    movements = {
-        m.doc_number: m
-        for m in session.query(Movement).filter(Movement.doc_number.like("DEMO-%")).all()
-    }
-    batches = {
-        b.batch_number: b
-        for b in session.query(Batch).filter(Batch.batch_number.like("DEMO-%")).all()
-    }
-
-    errors: list[str] = []
-    for mov_def in expected_defs:
-        m = movements.get(mov_def.doc_number)
-        if m is None:
-            errors.append(f"движение {mov_def.doc_number}: запись отсутствует")
-            continue
-        if m.quantity != mov_def.quantity:
-            errors.append(
-                f"движение {mov_def.doc_number}: "
-                f"количество {m.quantity} != эталон {mov_def.quantity}"
-            )
-        expected_date = mov_def.resolve_date(as_of)
-        if m.operation_date != expected_date:
-            errors.append(
-                f"движение {mov_def.doc_number}: дата {m.operation_date} != эталон {expected_date}"
-            )
-        if m.type != mov_def.movement_type:
-            errors.append(
-                f"движение {mov_def.doc_number}: тип {m.type} != эталон {mov_def.movement_type}"
-            )
-        if mov_def.batch_number and mov_def.expiry_offset_days is not None:
-            b = batches.get(mov_def.batch_number)
-            if b is not None:
-                expected_expiry = mov_def.resolve_expiry_date(as_of)
-                if b.expiry_date != expected_expiry:
-                    errors.append(
-                        f"партия {mov_def.batch_number}: "
-                        f"срок годности {b.expiry_date} != эталон {expected_expiry}"
-                    )
-
-    if errors:
-        sample = errors[:3]
-        suffix = f" (всего расхождений: {len(errors)})" if len(errors) > 3 else ""
-        raise DemoDataError(
-            f"Несоответствие значений демонстрационного набора эталону: {'; '.join(sample)}{suffix}"
-        )

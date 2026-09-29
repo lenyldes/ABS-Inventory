@@ -83,7 +83,6 @@ def test_demo_data_cli_unexpected_error_masks_secrets(
     with (
         patch("app.demo_data.__main__.check_database_readiness", return_value=(True, "available")),
         patch("app.demo_data.__main__.get_session_factory", return_value=mock_factory),
-        patch("app.demo_data.__main__.logger") as mock_logger,
         patch(
             "app.demo_data.__main__.prepare_demo_data",
             side_effect=RuntimeError(f"connection failed: {secret}"),
@@ -95,6 +94,3 @@ def test_demo_data_cli_unexpected_error_masks_secrets(
         assert secret not in captured.err
         assert "RuntimeError" in captured.err
         assert "Непредвиденная ошибка при подготовке данных" in captured.err
-        mock_logger.exception.assert_called_once()
-        log_args, _ = mock_logger.exception.call_args
-        assert any(secret in str(arg) for arg in log_args)

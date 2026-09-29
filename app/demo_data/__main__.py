@@ -109,7 +109,10 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"Операция не поддерживается: {err}\n")
         return 1
     except Exception as err:
-        logger.exception("Непредвиденная ошибка при подготовке данных: %s", err)
+        logger.error(
+            "Непредвиденная ошибка при подготовке данных: %s",
+            type(err).__name__,
+        )
         sys.stderr.write(f"Непредвиденная ошибка при подготовке данных: {type(err).__name__}\n")
         return 1
 
