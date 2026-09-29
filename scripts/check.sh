@@ -97,6 +97,7 @@ run_parallel 'pytest' docker compose run --rm -T test pytest -q --tb=short
 run_parallel 'сквозной запуск Compose' bash scripts/test_compose_lifecycle.sh
 run_parallel 'сбои запуска Compose' bash scripts/test_compose_failure.sh
 run_parallel 'сквозной сценарий исправлений' bash scripts/test_amendments_e2e.sh
+run_parallel 'сквозной сценарий сайта' bash scripts/test_web_ui_e2e.sh
 
 wait_parallel
 cleanup

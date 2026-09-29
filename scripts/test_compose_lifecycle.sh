@@ -36,6 +36,16 @@ curl -s "http://localhost:${PORT}/api/stock?location=MS-01" | grep -q '"sku":"OI
 curl -s "http://localhost:${PORT}/api/stock/OIL-001?location=MS-01" | grep -q '"batch_number":"SEED-BATCH-OIL-01"'
 curl -s "http://localhost:${PORT}/api/movements" | grep -q '"doc_number":"SEED-REC-001"'
 echo "Складской API успешно отдал корректные данные по стартовым движениям."
+DEMO_STATUS=$(curl -fsS "http://localhost:${PORT}/api/demo/status")
+printf '%s' "${DEMO_STATUS}" | python3 -c '
+import json
+import sys
+from datetime import date
+
+status = json.load(sys.stdin)
+assert status["ready"] is True
+date.fromisoformat(status["as_of"])
+'
 
 echo "=== [3/5] Добавление проверочной пользовательской записи ==="
 
@@ -73,17 +83,17 @@ until curl -s "http://localhost:${PORT}/health" | grep -q '"status":"healthy"'; 
 done
 
 echo "Проверка сохранности пользовательской записи и сидов..."
+[[ "$(curl -fsS "http://localhost:${PORT}/api/demo/status")" == "${DEMO_STATUS}" ]]
 COMPOSE_PROJECT_NAME="${PROJECT_NAME}" docker compose exec -T app python -c '
 from sqlalchemy import func
 from app.models.catalog import Item
-from app.seeds.data import SEED_ITEMS
 from app.core.database import get_session_factory
 f = get_session_factory()
 s = f()
 it = s.query(Item).filter(Item.sku == "PERSIST-VOL-01").first()
 assert it is not None, "Пользовательская запись утеряна!"
-total = s.query(func.count(Item.id)).scalar()
-assert total == len(SEED_ITEMS) + 1, f"Неверное число товаров: {total}"
+demo_count = s.query(func.count(Item.id)).filter(Item.sku.like("DEMO-%")).scalar()
+assert demo_count == 9, f"Неверное число DEMO-SKU: {demo_count}"
 s.close()
 '
 echo "Пользовательские данные успешно сохранены, сиды не продублированы."

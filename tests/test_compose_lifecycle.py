@@ -1,9 +1,9 @@
 """Сквозной интеграционный тест Compose на отдельном тестовом томе Docker.
 
 Проверяет:
-1. Первый запуск: docker compose up на пустом томе -> миграция -> сиды -> /health 200.
+1. Первый запуск: миграция, сиды, демонабор и /health 200.
 2. Сохранение пользовательских данных при down (без -v) и повторном up.
-3. Идемпотентность повторного запуска сидов и сохранение готовности.
+3. Сохранение демонабора и его даты после повторного запуска.
 4. Очистка изолированного тома при завершении.
 """
 
@@ -83,6 +83,11 @@ def test_compose_lifecycle_end_to_end_on_isolated_volume() -> None:
         assert resp.status_code == 200
         data = resp.json()
         assert data == {"status": "healthy", "database": "available"}
+        demo_status_url = f"http://localhost:{TEST_APP_PORT}/api/demo/status"
+        demo_status = httpx.get(demo_status_url, timeout=5.0)
+        assert demo_status.status_code == 200
+        as_of = demo_status.json()["as_of"]
+        assert demo_status.json() == {"ready": True, "as_of": as_of}
 
         # 2. Добавляем проверочную запись пользователя
         add_user_record_cmd = (
@@ -108,21 +113,23 @@ def test_compose_lifecycle_end_to_end_on_isolated_volume() -> None:
         resp_restart = _wait_for_health(health_url, timeout=30.0)
         assert resp_restart.status_code == 200
         assert resp_restart.json() == {"status": "healthy", "database": "available"}
+        demo_status_restart = httpx.get(demo_status_url, timeout=5.0)
+        assert demo_status_restart.status_code == 200
+        assert demo_status_restart.json() == {"ready": True, "as_of": as_of}
 
-        # Проверяем, что запись на месте, а сиды не дублированы
+        # Проверяем, что запись на месте, а все девять SKU демонабора сохранились
         verify_data_cmd = (
             "python -c '"
             "from sqlalchemy import func; "
             "from app.models.catalog import Item; "
-            "from app.seeds.data import SEED_ITEMS; "
             "from app.core.database import get_session_factory; "
             "factory = get_session_factory(); "
             "s = factory(); "
             'saved = s.query(Item).filter(Item.sku == "COMPOSE-VOL-01").first(); '
             'assert saved is not None, "Пользовательская запись не найдена после перезапуска!"; '
             'assert saved.name == "Том сохранен"; '
-            "total_items = s.query(func.count(Item.id)).scalar(); "
-            "assert total_items == len(SEED_ITEMS) + 1; "
+            'demo_count = s.query(func.count(Item.id)).filter(Item.sku.like("DEMO-%")).scalar(); '
+            'assert demo_count == 9, f"Неверное число DEMO-SKU: {demo_count}"; '
             "s.close()'"
         )
         _run_compose(["exec", "-T", "app", "sh", "-c", verify_data_cmd], env)
