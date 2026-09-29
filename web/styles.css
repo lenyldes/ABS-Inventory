@@ -16,9 +16,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .site-header { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 1rem max(1.5rem, calc((100vw - 1320px) / 2)); background: #173d34; color: white; }
 .brand { font-weight: 650; }
 .brand-mark { display: inline-block; margin-right: .5rem; padding: .2rem .45rem; border-radius: 5px; color: #173d34; background: #a7e0bc; }
-.site-header nav { display: flex; flex-wrap: wrap; gap: .5rem 1.15rem; }
+.site-header nav { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.15rem; }
 .site-header nav a { color: #e2f4e9; text-decoration: none; font-size: .9rem; }
 .site-header nav a:hover { text-decoration: underline; }
+.site-header .header-api-btn { display: inline-flex; align-items: center; gap: .5rem; padding: .45rem .95rem; border-radius: 8px; background: #a7e0bc; color: #173d34; font-weight: 700; font-size: .88rem; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: all .15s ease-in-out; }
+.site-header .header-api-btn:hover { background: #c2f5d3; color: #0f2c25; text-decoration: none; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+.api-btn-badge { display: inline-block; padding: .15rem .45rem; border-radius: 4px; background: #173d34; color: #a7e0bc; font-size: .75rem; font-weight: 800; letter-spacing: .05em; }
 [hidden] { display: none !important; }
 main { max-width: 1370px; margin: auto; padding: 1.5rem; }
 .hero { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.15rem 1.5rem; border-radius: 14px; background: linear-gradient(115deg, #1b5545, #297b63); color: white; }
