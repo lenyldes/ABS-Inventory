@@ -35,6 +35,7 @@ curl -fsS "${BASE_URL}/js/main.js" | grep -q 'initWarehouse'
 curl -fsS "${BASE_URL}/js/main.js" | grep -q 'initAnalytics'
 curl -fsS "${BASE_URL}/js/analytics.js" | grep -q '/api/procurement/plan'
 curl -fsS "${BASE_URL}/js/warehouse.js" | grep -q '/api/movements'
+curl -fsS "${BASE_URL}/js/movement-form.js" | grep -q '/api/movements'
 curl -fsS "${BASE_URL}/styles.css" | grep -q 'table-wrap'
 curl -fsS "${BASE_URL}/docs" | grep -q 'Swagger UI'
 curl -fsS "${BASE_URL}/openapi.json" | grep -q '"openapi"'
@@ -113,6 +114,42 @@ body = json.load(sys.stdin)
 assert body["horizon_months"] == 1
 assert 28 <= body["days_count"] <= 31
 '
+
+OP_DATE=$(TZ=Europe/Moscow date +%F)
+DOC_PREFIX="WEB-E2E-${PROJECT_NAME}"
+receipt=$(curl -fsS -H 'Content-Type: application/json' \
+    -d "{\"operation_date\":\"${OP_DATE}\",\"sku\":\"OIL-001\",\"location\":\"MS-01\",\"type\":\"receipt\",\"quantity\":\"2.000\",\"doc_number\":\"${DOC_PREFIX}-REC\",\"batch_number\":\"${DOC_PREFIX}-BATCH\",\"unit_price\":\"100.00\"}" \
+    "${BASE_URL}/api/movements")
+consume=$(curl -fsS -H 'Content-Type: application/json' \
+    -d "{\"operation_date\":\"${OP_DATE}\",\"sku\":\"OIL-001\",\"location\":\"MS-01\",\"type\":\"consume\",\"quantity\":\"1.000\",\"doc_number\":\"${DOC_PREFIX}-CONS\"}" \
+    "${BASE_URL}/api/movements")
+python3 - "$receipt" "$consume" <<'PY'
+import json
+import sys
+from decimal import Decimal
+
+receipt, consume = (json.loads(text) for text in sys.argv[1:])
+assert receipt["type"] == "receipt" and receipt["allocations"] == []
+assert consume["type"] == "consume" and consume["allocations"]
+assert receipt["sku"] == consume["sku"] == "OIL-001"
+assert receipt["location"] == consume["location"] == "MS-01"
+assert Decimal(receipt["current_stock"]) - Decimal(consume["current_stock"]) == 1
+assert sum(Decimal(row["quantity"]) for row in consume["allocations"]) == 1
+assert all(row["id"] > 0 and row["batch_id"] > 0 for row in consume["allocations"])
+PY
+duplicate=$(curl -sS -w '\n%{http_code}' -H 'Content-Type: application/json' \
+    -d "{\"operation_date\":\"${OP_DATE}\",\"sku\":\"OIL-001\",\"location\":\"MS-01\",\"type\":\"consume\",\"quantity\":\"1.000\",\"doc_number\":\"${DOC_PREFIX}-CONS\"}" \
+    "${BASE_URL}/api/movements")
+[[ "${duplicate##*$'\n'}" == "409" ]]
+python3 - "${duplicate%$'\n'*}" <<'PY'
+import json
+import sys
+
+error = json.loads(sys.argv[1])
+assert error["message"]
+PY
+curl -fsS "${BASE_URL}/api/movements?sku=OIL-001&location=MS-01&date_to=${OP_DATE}" | \
+    python3 -c 'import json,sys; items=json.load(sys.stdin)["items"]; assert any(item["type"] == "consume" and item["allocations"] for item in items)'
 
 # Повреждённый ключ делает демонабор неполным; bootstrap не допускает запуск API.
 docker compose down >/dev/null

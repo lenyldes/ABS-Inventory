@@ -13,6 +13,7 @@
       <nav aria-label="Разделы сайта">
         <a href="#warehouse">Склад</a>
         <a href="#journal">Журнал</a>
+        <a href="#movement">Операция</a>
         <a href="#analytics">Риски и прогноз</a>
         <a href="#planning">План и бюджет</a>
         <a href="#ai">AI</a>
@@ -49,7 +50,7 @@
           <div><span id="stock-status" class="status loading" role="status">Ожидаем данные…</span>
             <button id="stock-retry" type="button" hidden>Повторить</button></div>
         </div>
-        <p class="hint">Выберите товар, чтобы посмотреть партии. Все количества и показатели получены из API на дату снимка.</p>
+        <p id="stock-hint" class="hint">Выберите товар, чтобы посмотреть партии. Все количества и показатели получены из API на дату снимка.</p>
         <div class="table-wrap"><table>
           <thead><tr><th>Товар</th><th>Объект</th><th>Учётный</th><th>Доступный</th><th>Просроченный</th><th>Средний расход / день</th><th>Дней запаса</th><th>Ближайший срок</th></tr></thead>
           <tbody id="stock-body"></tbody>
@@ -91,6 +92,8 @@
           <div><button id="journal-prev" type="button" disabled>← Назад</button>
             <button id="journal-next" type="button" disabled>Далее →</button></div></div>
       </section>
+
+      <section id="movement" class="panel" aria-labelledby="movement-title"></section>
 
       <section id="analytics" class="panel" aria-labelledby="analytics-title">
         <p class="eyebrow">02 / Риски</p><h2 id="analytics-title">Предупреждения</h2>

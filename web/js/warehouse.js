@@ -26,6 +26,9 @@ function showRetry(button, visible) {
 }
 
 export function initWarehouse(state) {
+  let warehouseAsOf = null;
+  let visibleBatches = [];
+  let visibleMovements = [];
   const stockStatus = $("#stock-status");
   const stockBody = $("#stock-body");
   const stockRetry = $("#stock-retry");
@@ -68,7 +71,7 @@ export function initWarehouse(state) {
     setStatus(stockStatus, "Загружаем остатки…");
     showRetry(stockRetry, false);
     try {
-      const items = await getAllPages("/api/stock", { as_of: state.asOf });
+      const items = await getAllPages("/api/stock", { as_of: warehouseAsOf || state.asOf });
       if (request !== state.stockRequest) return;
       state.stockItems = items;
       renderStock(items);
@@ -87,7 +90,8 @@ export function initWarehouse(state) {
 
   async function loadDetail() {
     const request = ++state.detailRequest;
-    const { sku, location, asOf } = state;
+    const { sku, location } = state;
+    const asOf = warehouseAsOf || state.asOf;
     $("#detail-title").textContent = `${sku} · ${location}`;
     setStatus(detailStatus, "Загружаем партии…");
     showRetry(detailRetry, false);
@@ -98,6 +102,7 @@ export function initWarehouse(state) {
       if (request !== state.detailRequest) return;
       const selected = detail.locations.find((item) => item.location === location);
       if (!selected) throw new Error("Для выбранного объекта нет данных.");
+      visibleBatches = selected.batches;
       $("#detail-balance").textContent =
         `Учётный: ${value(selected.current_stock)} · Доступный: ${value(selected.available_stock)} · Просроченный: ${value(selected.expired_stock)}`;
       for (const batch of selected.batches) {
@@ -114,6 +119,7 @@ export function initWarehouse(state) {
         selected.batches.length ? `${selected.batches.length} партий` : "Партии с остатком не найдены.", "success");
     } catch (error) {
       if (request !== state.detailRequest) return;
+      visibleBatches = [];
       $("#detail-balance").textContent = "";
       setStatus(detailStatus, `Ошибка загрузки партий: ${error.message}`, "error");
       showRetry(detailRetry, true);
@@ -136,6 +142,7 @@ export function initWarehouse(state) {
 
   function renderJournal(page) {
     journalBody.replaceChildren();
+    visibleMovements = page.items;
     state.journal.total = page.total;
     for (const movement of page.items) {
       const row = document.createElement("tr");
@@ -207,6 +214,19 @@ export function initWarehouse(state) {
       state.journal.filters = Object.fromEntries(new FormData(filterForm));
       await Promise.all([loadStock(), loadJournal()]);
     },
-    refresh: () => Promise.all([loadStock(), loadJournal()]),
+    async refreshAfterMovement(asOf, sku, location) {
+      warehouseAsOf = asOf;
+      $("#stock-hint").textContent = `После операции остатки и партии показаны на ${asOf}. Аналитика остаётся на дату демоснимка.`;
+      selectStock(sku, location);
+      filterForm.elements.sku.value = sku;
+      filterForm.elements.location.value = location;
+      filterForm.elements.type.value = "";
+      filterForm.elements.date_from.value = "";
+      filterForm.elements.date_to.value = asOf;
+      state.journal.filters = Object.fromEntries(new FormData(filterForm));
+      state.journal.offset = 0;
+      await Promise.all([loadStock(), loadJournal()]);
+    },
+    visibleReferences: () => ({ batches: visibleBatches, movements: visibleMovements }),
   };
 }
