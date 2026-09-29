@@ -123,3 +123,20 @@ def test_prepare_demo_data_idempotent_fails_on_modified_condition(
 
     with pytest.raises(DemoDataError, match="условие"):
         prepare_demo_data(db_session, as_of=TEST_AS_OF)
+
+
+def test_prepare_demo_data_idempotent_fails_on_reassigned_order_sku(
+    db_session: Session,
+) -> None:
+    """Проверяет отказ возврата idempotent при переназначении заказа другому SKU."""
+    prepare_demo_data(db_session, as_of=TEST_AS_OF)
+
+    order = (
+        db_session.query(PurchaseOrder).filter(PurchaseOrder.doc_number == "DEMO-PO-INCOMING").one()
+    )
+    oil_item = db_session.query(Item).filter(Item.sku == "DEMO-OIL").one()
+    order.item_id = oil_item.id
+    db_session.flush()
+
+    with pytest.raises(DemoDataError, match="заказ DEMO-PO-INCOMING: товар"):
+        prepare_demo_data(db_session, as_of=TEST_AS_OF)

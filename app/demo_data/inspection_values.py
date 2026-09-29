@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.demo_data.catalog import DEMO_CONDITIONS, DEMO_ITEM_SKUS
 from app.demo_data.movements import build_demo_movement_definitions
 from app.demo_data.orders import DEMO_ORDERS
-from app.models.catalog import Item, Supplier
+from app.models.catalog import Item, Location, Supplier
 from app.models.inventory import Batch, Movement
 from app.models.procurement import PurchaseOrder, SupplierCondition
 
@@ -66,14 +66,42 @@ def verify_demo_values(session: Session, as_of: date) -> None:
                     )
 
     orders = {
-        po.doc_number: po
-        for po in session.query(PurchaseOrder).filter(PurchaseOrder.doc_number.like("DEMO-%")).all()
+        doc: (po, sku, loc_code, sup_id)
+        for po, doc, sku, loc_code, sup_id in (
+            session.query(
+                PurchaseOrder,
+                PurchaseOrder.doc_number,
+                Item.sku,
+                Location.code,
+                Supplier.supplier_id,
+            )
+            .join(Item, PurchaseOrder.item_id == Item.id)
+            .join(Location, PurchaseOrder.location_id == Location.id)
+            .join(Supplier, PurchaseOrder.supplier_id == Supplier.id)
+            .filter(PurchaseOrder.doc_number.like("DEMO-%"))
+            .all()
+        )
     }
     for order_def in DEMO_ORDERS:
-        po = orders.get(order_def.doc_number)
-        if po is None:
+        order_info = orders.get(order_def.doc_number)
+        if order_info is None:
             errors.append(f"заказ {order_def.doc_number}: запись отсутствует")
             continue
+        po, actual_sku, actual_loc, actual_sup = order_info
+        if actual_sku != order_def.sku:
+            errors.append(
+                f"заказ {order_def.doc_number}: товар {actual_sku} != эталон {order_def.sku}"
+            )
+        if actual_loc != order_def.location_code:
+            errors.append(
+                f"заказ {order_def.doc_number}: "
+                f"объект {actual_loc} != эталон {order_def.location_code}"
+            )
+        if actual_sup != order_def.supplier_id:
+            errors.append(
+                f"заказ {order_def.doc_number}: "
+                f"поставщик {actual_sup} != эталон {order_def.supplier_id}"
+            )
         if po.expected_qty != order_def.expected_qty:
             errors.append(
                 f"заказ {order_def.doc_number}: "
@@ -96,7 +124,7 @@ def verify_demo_values(session: Session, as_of: date) -> None:
             )
         if po.status != order_def.status:
             errors.append(
-                f"заказ {order_def.doc_number}: статус {po.status} != эталон {order_def.status}"
+                f"заказ {order_def.doc_number}: status {po.status} != эталон {order_def.status}"
             )
         expected_po_date = order_def.resolve_expected_date(as_of)
         if po.expected_date != expected_po_date:
