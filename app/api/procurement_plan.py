@@ -92,7 +92,6 @@ def post_procurement_plan(
     last_day_of_end_month = calendar.monthrange(horizon_end.year, horizon_end.month)[1]
     is_last_month_partial = horizon_end.day != last_day_of_end_month
 
-    set_repeatable_read_snapshot(db)
     snapshot = load_plan_database_snapshot(
         session=db,
         as_of=calc_as_of,
