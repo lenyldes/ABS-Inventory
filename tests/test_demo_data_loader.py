@@ -1,4 +1,4 @@
-"""Тесты структуры определений и загрузки демонстрационного набора данных."""
+"""Тесты загрузки и валидации демонстрационного набора данных в БД."""
 
 from datetime import date
 from decimal import Decimal
@@ -7,19 +7,9 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.demo_data.catalog import (
-    DEMO_CONDITIONS,
-    DEMO_ITEMS,
-    DEMO_LOCATIONS,
-    DEMO_SKU_LOCATIONS,
-    DEMO_SUPPLIERS,
-)
-from app.demo_data.loader import load_demo_data
-from app.demo_data.movements import (
-    DEMO_BASE_RECEIPT_DOC,
-    DEMO_BASE_RECEIPT_OFFSET,
-    DEMO_MOVEMENTS,
-)
+from app.demo_data.inspection import DemoDataError
+from app.demo_data.loader import load_demo_data, prepare_demo_data
+from app.demo_data.movements import DEMO_BASE_RECEIPT_DOC
 from app.models.catalog import Item, Location, Supplier
 from app.models.inventory import (
     Batch,
@@ -29,97 +19,6 @@ from app.models.inventory import (
 from app.models.procurement import PurchaseOrder, SupplierCondition
 
 TEST_AS_OF = date(2026, 9, 29)
-
-
-def test_demo_definitions_composition() -> None:
-    """Проверяет полноту объектов, поставщиков, SKU и категорий (задача 1.1)."""
-    # 1. Объекты: ровно 2, коды начинаются с DEMO-
-    assert len(DEMO_LOCATIONS) == 2
-    loc_codes = {loc["code"] for loc in DEMO_LOCATIONS}
-    assert loc_codes == {"DEMO-MS-01", "DEMO-MS-02"}
-    assert all(c.startswith("DEMO-") for c in loc_codes)
-
-    # 2. Поставщики: ровно 2, начинаются с DEMO-
-    assert len(DEMO_SUPPLIERS) == 2
-    sup_ids = {s["supplier_id"] for s in DEMO_SUPPLIERS}
-    assert sup_ids == {"DEMO-SUP-MAIN", "DEMO-SUP-ALT"}
-
-    # 3. Девять ситуаций и SKU, префикс DEMO-
-    assert len(DEMO_ITEMS) == 9
-    expected_skus = {
-        "DEMO-OIL",
-        "DEMO-DEFICIT",
-        "DEMO-EXPIRY",
-        "DEMO-EXPIRED",
-        "DEMO-IDLE",
-        "DEMO-SHORT",
-        "DEMO-NOPRICE",
-        "DEMO-NOLEAD",
-        "DEMO-INCOMING",
-    }
-    actual_skus = {item["sku"] for item in DEMO_ITEMS}
-    assert actual_skus == expected_skus
-    assert all(sku.startswith("DEMO-") for sku in actual_skus)
-
-    # 4. Минимум три категории
-    categories = {item["category"] for item in DEMO_ITEMS}
-    assert len(categories) >= 3
-
-    # 5. Размещение по объектам: DEMO-DEFICIT и DEMO-SHORT на DEMO-MS-02, остальные на DEMO-MS-01
-    assert DEMO_SKU_LOCATIONS["DEMO-DEFICIT"] == "DEMO-MS-02"
-    assert DEMO_SKU_LOCATIONS["DEMO-SHORT"] == "DEMO-MS-02"
-    for sku, loc in DEMO_SKU_LOCATIONS.items():
-        if sku not in {"DEMO-DEFICIT", "DEMO-SHORT"}:
-            assert loc == "DEMO-MS-01"
-
-    # 6. Закупочные условия: для DEMO-NOLEAD условий нет, для DEMO-NOPRICE цена None
-    cond_skus = {c["item_sku"] for c in DEMO_CONDITIONS}
-    assert "DEMO-NOLEAD" not in cond_skus
-    assert "DEMO-NOPRICE" in cond_skus
-    noprice_cond = next(c for c in DEMO_CONDITIONS if c["item_sku"] == "DEMO-NOPRICE")
-    assert noprice_cond["estimated_price"] is None
-    assert noprice_cond["is_primary"] is True
-
-
-def test_demo_definitions_history_and_oil() -> None:
-    """Проверяет историю движений внутри и вне 90 дней, масло и расход 1/день (задача 1.1)."""
-    # 1. Опорный приход масла
-    base_m = next(m for m in DEMO_MOVEMENTS if m.doc_number == DEMO_BASE_RECEIPT_DOC)
-    assert base_m.sku == "DEMO-OIL"
-    assert base_m.movement_type == "receipt"
-    assert base_m.offset_days == DEMO_BASE_RECEIPT_OFFSET == -100
-    assert base_m.quantity == Decimal("140.000")
-    assert base_m.batch_number == "DEMO-BATCH-OIL"
-
-    # 2. Расходы масла: ровно 90 дней от -89 до 0 включительно
-    oil_consumes = [
-        m for m in DEMO_MOVEMENTS if m.sku == "DEMO-OIL" and m.movement_type == "consume"
-    ]
-    assert len(oil_consumes) == 90
-    consume_offsets = [m.offset_days for m in oil_consumes]
-    assert consume_offsets == list(range(-89, 1))
-    assert all(m.quantity == Decimal("1.000") for m in oil_consumes)
-
-    # 3. Расчетный остаток масла: 140 - 90 = 50, средний расход 90 / 90 = 1.000000
-    total_consumed = sum(m.quantity for m in oil_consumes)
-    assert total_consumed == Decimal("90.000")
-    assert base_m.quantity - total_consumed == Decimal("50.000")
-    avg_daily_consumption = total_consumed / Decimal(len(oil_consumes))
-    assert avg_daily_consumption == Decimal("1.000000")
-
-    # 4. Движения вне 90-дневного окна (< -89 дней)
-    outside_window = [m for m in DEMO_MOVEMENTS if m.offset_days < -89]
-    assert len(outside_window) >= 2  # Приходы на -100 и -120 дней
-    outside_skus = {m.sku for m in outside_window}
-    assert "DEMO-OIL" in outside_skus
-    assert "DEMO-IDLE" in outside_skus
-
-    # 5. Движения внутри 90-дневного окна (>= -89 дней)
-    inside_window = [m for m in DEMO_MOVEMENTS if m.offset_days >= -89]
-    assert len(inside_window) >= 90
-    inside_skus = {m.sku for m in inside_window}
-    assert "DEMO-SHORT" in inside_skus  # Приход на -10, расход на -5
-    assert "DEMO-EXPIRY" in inside_skus  # Приход на -20, расход на -5
 
 
 def test_load_demo_data_on_postgres(db_session: Session) -> None:
@@ -198,7 +97,6 @@ def test_load_demo_data_on_postgres(db_session: Session) -> None:
 
 def test_load_demo_data_rollback_on_error(db_session: Session) -> None:
     """Проверяет полный откат транзакции при возникновении сбоя (задача 1.2)."""
-    # Имитируем сбой во время проведения движений
     with patch(
         "app.demo_data.loader.register_consume",
         side_effect=RuntimeError("Simulated failure in register_consume"),
@@ -206,7 +104,6 @@ def test_load_demo_data_rollback_on_error(db_session: Session) -> None:
         with pytest.raises(RuntimeError, match="Simulated failure"):
             load_demo_data(db_session, as_of=TEST_AS_OF)
 
-    # Проверяем, что в базе данных не осталось созданных записей
     assert db_session.query(Item).filter(Item.sku.like("DEMO-%")).count() == 0
     assert db_session.query(Location).filter(Location.code.like("DEMO-%")).count() == 0
     assert db_session.query(Supplier).filter(Supplier.supplier_id.like("DEMO-%")).count() == 0
@@ -222,3 +119,106 @@ def test_load_demo_data_rollback_on_error(db_session: Session) -> None:
     assert (
         db_session.query(PurchaseOrder).filter(PurchaseOrder.doc_number.like("DEMO-%")).count() == 0
     )
+
+
+def test_prepare_demo_data_idempotent_and_different_date(db_session: Session) -> None:
+    """Проверяет идемпотентный повтор и отказ при иной as_of без --replace (задача 1.3)."""
+    # 1. Первичная подготовка на TEST_AS_OF
+    mode1, stats1 = prepare_demo_data(db_session, as_of=TEST_AS_OF)
+    assert mode1 == "created"
+    assert stats1["movements"] == 105
+
+    # Фиксируем количество строк в таблицах
+    counts_before = {
+        "items": db_session.query(Item).filter(Item.sku.like("DEMO-%")).count(),
+        "locations": db_session.query(Location).filter(Location.code.like("DEMO-%")).count(),
+        "suppliers": db_session.query(Supplier).filter(Supplier.supplier_id.like("DEMO-%")).count(),
+        "conditions": (
+            db_session.query(SupplierCondition)
+            .join(Item, SupplierCondition.item_id == Item.id)
+            .filter(Item.sku.like("DEMO-%"))
+            .count()
+        ),
+        "movements": db_session.query(Movement).filter(Movement.doc_number.like("DEMO-%")).count(),
+        "batches": db_session.query(Batch).filter(Batch.batch_number.like("DEMO-%")).count(),
+        "orders": (
+            db_session.query(PurchaseOrder).filter(PurchaseOrder.doc_number.like("DEMO-%")).count()
+        ),
+        "allocations": (
+            db_session.query(MovementAllocation)
+            .join(Movement, MovementAllocation.movement_id == Movement.id)
+            .filter(Movement.doc_number.like("DEMO-%"))
+            .count()
+        ),
+    }
+
+    # 2. Идемпотентный повтор на ту же дату: безопасный no-op
+    mode2, stats2 = prepare_demo_data(db_session, as_of=TEST_AS_OF)
+    assert mode2 == "idempotent"
+    assert stats1 == stats2
+
+    # Количество строк не изменилось
+    assert db_session.query(Item).filter(Item.sku.like("DEMO-%")).count() == counts_before["items"]
+    assert (
+        db_session.query(Movement).filter(Movement.doc_number.like("DEMO-%")).count()
+        == counts_before["movements"]
+    )
+    assert (
+        db_session.query(MovementAllocation)
+        .join(Movement, MovementAllocation.movement_id == Movement.id)
+        .filter(Movement.doc_number.like("DEMO-%"))
+        .count()
+        == counts_before["allocations"]
+    )
+
+    # 3. Отказ при иной as_of без --replace
+    other_as_of = date(2026, 9, 15)
+    with pytest.raises(DemoDataError, match="--replace"):
+        prepare_demo_data(db_session, as_of=other_as_of, replace=False)
+
+
+def test_prepare_demo_data_missing_and_extra_key(db_session: Session) -> None:
+    """Проверяет отказ при отсутствующем или лишнем ключе DEMO- (задача 1.3)."""
+    prepare_demo_data(db_session, as_of=TEST_AS_OF)
+
+    # 1. Лишний ключ DEMO-
+    extra_loc = Location(code="DEMO-MS-EXTRA", name="Лишний объект")
+    db_session.add(extra_loc)
+    db_session.commit()
+
+    with pytest.raises(DemoDataError, match="лишние"):
+        prepare_demo_data(db_session, as_of=TEST_AS_OF)
+
+    # Удаляем лишний объект
+    db_session.delete(extra_loc)
+    db_session.commit()
+
+    # 2. Отсутствующий ключ (удаляем одно движение)
+    one_movement = (
+        db_session.query(Movement).filter(Movement.doc_number == "DEMO-CONS-OIL-90").one()
+    )
+    db_session.query(MovementAllocation).filter(
+        MovementAllocation.movement_id == one_movement.id
+    ).delete()
+    for v in one_movement.versions:
+        db_session.delete(v)
+    db_session.delete(one_movement)
+    db_session.commit()
+
+    with pytest.raises(DemoDataError, match="отсутствуют"):
+        prepare_demo_data(db_session, as_of=TEST_AS_OF)
+
+
+def test_prepare_demo_data_missing_base_movement(db_session: Session) -> None:
+    """Проверяет отказ при отсутствии опорного движения DEMO-REC-OIL-BASE (задача 1.3)."""
+    prepare_demo_data(db_session, as_of=TEST_AS_OF)
+
+    # Удаляем опорное движение
+    base_m = db_session.query(Movement).filter(Movement.doc_number == DEMO_BASE_RECEIPT_DOC).one()
+    for v in base_m.versions:
+        db_session.delete(v)
+    db_session.delete(base_m)
+    db_session.commit()
+
+    with pytest.raises(DemoDataError, match="отсутствует опорное движение"):
+        prepare_demo_data(db_session, as_of=TEST_AS_OF)

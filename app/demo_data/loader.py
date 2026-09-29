@@ -11,7 +11,17 @@ from app.demo_data.catalog import (
     DEMO_LOCATIONS,
     DEMO_SUPPLIERS,
 )
-from app.demo_data.movements import DEMO_BATCH_NUMBERS, DEMO_MOVEMENTS
+from app.demo_data.inspection import (
+    DemoDataError,
+    detect_demo_as_of,
+    get_existing_demo_keys,
+    verify_demo_keys,
+)
+from app.demo_data.movements import (
+    DEMO_BASE_RECEIPT_DOC,
+    DEMO_BATCH_NUMBERS,
+    DEMO_MOVEMENTS,
+)
 from app.demo_data.orders import DEMO_ORDERS
 from app.inventory.operations import register_consume, register_receipt
 from app.models.catalog import Item, Location, Supplier
@@ -187,3 +197,54 @@ def load_demo_data(session: Session, as_of: date) -> dict[str, int]:
     except Exception:
         session.rollback()
         raise
+
+
+def prepare_demo_data(
+    session: Session,
+    as_of: date,
+    replace: bool = False,
+) -> tuple[str, dict[str, int]]:
+    """Готовит или подтверждает демонстрационный набор данных в одной транзакции.
+
+    - Если демонстрационных данных в БД нет, загружает их (режим 'created').
+    - Если данные уже есть:
+      - Проверяет опорное движение и сверяет полный перечень ключей.
+      - При совпадении as_of: безопасный повтор без изменений (режим 'idempotent').
+      - При иной as_of и replace=False: отказ с DemoDataError.
+      - При иной as_of и replace=True: пересборка (реализуется в задаче 2.1).
+    """
+    keys = get_existing_demo_keys(session)
+    has_records = any(bool(v) for v in keys.values())
+
+    if not has_records:
+        stats = load_demo_data(session, as_of)
+        return "created", stats
+
+    existing_as_of = detect_demo_as_of(session)
+    if existing_as_of is None:
+        raise DemoDataError(
+            "Демонабор не полон или поврежден: "
+            f"отсутствует опорное движение {DEMO_BASE_RECEIPT_DOC}"
+        )
+
+    verify_demo_keys(session, keys)
+
+    if as_of == existing_as_of:
+        stats = {
+            "locations": len(keys["locations"]),
+            "suppliers": len(keys["suppliers"]),
+            "items": len(keys["items"]),
+            "supplier_conditions": len(DEMO_CONDITIONS),
+            "movements": len(keys["movements"]),
+            "batches": len(keys["batches"]),
+            "orders": len(keys["orders"]),
+        }
+        return "idempotent", stats
+
+    if not replace:
+        raise DemoDataError(
+            f"Демонабор уже создан на дату {existing_as_of.isoformat()}. "
+            f"Для пересборки на дату {as_of.isoformat()} укажите флаг --replace."
+        )
+
+    raise NotImplementedError("Режим --replace будет реализован в задаче 2.1")
