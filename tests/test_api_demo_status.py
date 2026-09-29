@@ -62,3 +62,24 @@ def test_status_unavailable_for_incomplete_set(db_session: Session) -> None:
     status, _body = request_status()
     assert status == 503
     assert get_existing_demo_keys(db_session) == incomplete_keys
+
+
+def test_status_stays_ready_after_new_demo_movement(db_session: Session) -> None:
+    """Дополнительное движение DEMO- не делает живой стенд недоступным."""
+    bootstrap_demo_data(db_session)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/movements",
+            json={
+                "operation_date": "2026-09-29",
+                "sku": "DEMO-OIL",
+                "location": "DEMO-MS-01",
+                "type": "receipt",
+                "quantity": "1.000",
+                "doc_number": "DEMO-VISITOR-REC-01",
+                "batch_number": "DEMO-VISITOR-BATCH-01",
+                "unit_price": "100.00",
+            },
+        )
+    assert response.status_code == 201
+    assert request_status() == (200, {"ready": True, "as_of": "2026-09-29"})

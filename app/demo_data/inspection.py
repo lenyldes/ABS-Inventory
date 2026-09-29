@@ -81,10 +81,11 @@ def verify_demo_keys(
     session: Session,
     existing_keys: dict[str, set[str]],
     as_of: date | None = None,
+    allow_extra: bool = False,
 ) -> None:
-    """Сверяет существующие ключи с ожидаемым полным перечнем демонабора.
+    """Сверяет обязательные ключи; опционально допускает новые записи стенда.
 
-    При недостающих или лишних ключах вызывает DemoDataError.
+    Отсутствие обязательных ключей всегда ошибка; лишние допустимы при allow_extra.
     При передаче as_of также выполняет сверку значений записей (verify_demo_values).
     """
     expected = {
@@ -105,7 +106,7 @@ def verify_demo_keys(
             sample = sorted(missing)[:3]
             suffix = "..." if len(missing) > 3 else ""
             errors.append(f"{entity_name}: отсутствуют {sample}{suffix}")
-        if extra:
+        if extra and not allow_extra:
             sample = sorted(extra)[:3]
             suffix = "..." if len(extra) > 3 else ""
             errors.append(f"{entity_name}: лишние {sample}{suffix}")
@@ -132,7 +133,7 @@ def verify_demo_keys(
 
 def require_demo_as_of(session: Session) -> date:
     """Возвращает дату полного демонабора без изменения записей."""
-    verify_demo_keys(session, get_existing_demo_keys(session))
+    verify_demo_keys(session, get_existing_demo_keys(session), allow_extra=True)
     as_of = detect_demo_as_of(session)
     if as_of is None:
         raise DemoDataError(

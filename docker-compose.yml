@@ -41,7 +41,7 @@ services:
       timeout: 3s
       retries: 10
     command: >-
-      sh -c 'alembic upgrade head && python -m app.seeds &&
+      sh -c 'alembic upgrade head && python -m app.demo_data.reset && python -m app.seeds &&
       python -m app.demo_data.bootstrap &&
       exec uvicorn app.main:app --host 0.0.0.0 --port 8000'
 

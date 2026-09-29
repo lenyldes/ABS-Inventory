@@ -16,7 +16,7 @@ const formMarkup = `
     <div><p class="eyebrow">Операция</p><h2 id="movement-title">Провести движение</h2></div>
     <span id="movement-status" class="status success" role="status">Укажите параметры движения.</span>
   </div>
-  <p class="hint">Контрольные SKU DEMO- защищены от отправки через форму. Для проверки используйте OIL-001 и объект MS-01. ID партий, движений и распределений можно взять из таблиц выше или ввести вручную.</p>
+  <p class="hint">Можно проводить движения для любого SKU, включая DEMO-. После перезапуска приложения стенд вернётся к исходным данным. ID партий, движений и распределений можно взять из таблиц выше или ввести вручную.</p>
   <form id="movement-form" class="filters">
     <label>Дата операции <input name="operation_date" type="date" required></label>
     <label>SKU <input name="sku" value="OIL-001" maxlength="64" required></label>
@@ -98,7 +98,6 @@ export function initMovementForm(warehouse) {
   const form = $("#movement-form");
   const status = $("#movement-status");
   const submit = $("#movement-submit");
-  const sku = form.elements.sku;
   const type = form.elements.type;
   form.elements.operation_date.value = moscowToday();
 
@@ -119,24 +118,11 @@ export function initMovementForm(warehouse) {
     updateReferences(warehouse);
   }
 
-  function updateSku() {
-    const protectedSku = sku.value.trim().toUpperCase().startsWith("DEMO-");
-    submit.disabled = protectedSku || pending;
-    if (protectedSku) {
-      setStatus(status, "Операции с DEMO- запрещены в форме. Для проверки используйте OIL-001.", "error");
-    } else if (status.dataset.protected === "true") {
-      setStatus(status, "Укажите параметры движения и отправьте форму.", "success");
-    }
-    status.dataset.protected = String(protectedSku);
-  }
-
   type.addEventListener("change", updateType);
-  sku.addEventListener("input", updateSku);
   form.addEventListener("focusin", () => updateReferences(warehouse));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    updateSku();
-    if (submit.disabled || !form.reportValidity()) return;
+    if (pending || !form.reportValidity()) return;
     const data = new FormData(form);
     const payload = {};
     for (const name of ["operation_date", "sku", "location", "type", "quantity", "doc_number",
@@ -161,9 +147,8 @@ export function initMovementForm(warehouse) {
       setStatus(status, `${code}${error.message}`, "error");
     } finally {
       pending = false;
-      updateSku();
+      submit.disabled = false;
     }
   });
   updateType();
-  updateSku();
 }

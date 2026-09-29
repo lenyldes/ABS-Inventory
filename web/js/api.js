@@ -8,34 +8,55 @@ export class ApiError extends Error {
   }
 }
 
-export async function getJson(path, params = {}, { signal } = {}) {
+/** Сохраняет фактический обмен, включая JSON тела ошибочного HTTP-ответа. */
+export async function exchangeJson(method, path, { params = {}, body = null, signal } = {}) {
   const url = new URL(path, window.location.origin);
   for (const [key, value] of Object.entries(params)) {
-    if (value !== null && value !== undefined && value !== "") {
-      url.searchParams.set(key, String(value));
-    }
+    if (value !== null && value !== undefined && value !== "") url.searchParams.set(key, String(value));
   }
-  let response;
+  const request = { method, url: url.pathname + url.search, body: method === "GET" ? null : body };
   try {
-    response = await fetch(url, { signal, headers: { Accept: "application/json" } });
+    const response = await fetch(url, {
+      method, signal,
+      headers: { Accept: "application/json", ...(body === null ? {} : { "Content-Type": "application/json" }) },
+      ...(body === null ? {} : { body: JSON.stringify(body) }),
+    });
+    try {
+      return { request, response: { status: response.status, body: await response.json() }, error: null };
+    } catch {
+      return { request, response: { status: response.status, body: null },
+        error: { kind: "invalid_json", message: "Сервер вернул невалидный JSON." } };
+    }
   } catch (error) {
     if (error.name === "AbortError") throw error;
+    return { request, response: { status: null, body: null },
+      error: { kind: "network", message: "Не удалось связаться с сервером." } };
+  }
+}
+
+export async function getJson(path, params = {}, { signal } = {}) {
+  return unwrap(await exchangeJson("GET", path, { params, signal }));
+}
+
+function unwrap({ response, error }) {
+  if (error?.kind === "network") {
     throw new ApiError("Не удалось связаться с сервером. Проверьте подключение и повторите запрос.");
   }
-
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
+  if (error || response.body === null) {
+    throw new ApiError("Сервер вернул ответ без данных.", response.status);
+  }
+  const body = response.body;
+  if (response.status < 200 || response.status >= 300) {
     const detail = body?.detail;
     const baseMessage = body?.message || detail?.message ||
       (typeof detail === "string" ? detail : `Ошибка сервера (${response.status})`);
     const details = body?.details || detail?.details || null;
     const errors = details?.errors;
     const message = Array.isArray(errors) && errors.length
-      ? `${baseMessage}: ${errors.map((error) => error.message || error.msg || String(error)).join("; ")}`
+      ? `${baseMessage}: ${errors.map((item) => item.message || item.msg || String(item)).join("; ")}`
       : baseMessage;
     throw new ApiError(message, response.status, details);
   }
-  if (body === null) throw new ApiError("Сервер вернул ответ без данных.", response.status);
   return body;
 }
 
@@ -52,28 +73,5 @@ export async function getAllPages(path, params = {}, { signal } = {}) {
 }
 
 export async function postJson(path, payload, { signal } = {}) {
-  let response;
-  try {
-    response = await fetch(path, {
-      method: "POST",
-      signal,
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (error) {
-    if (error.name === "AbortError") throw error;
-    throw new ApiError("Не удалось связаться с сервером. Проверьте подключение и повторите запрос.");
-  }
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    const detail = body?.detail;
-    const message = body?.message || detail?.message ||
-      (typeof detail === "string" ? detail : `Ошибка сервера (${response.status})`);
-    const errors = body?.details?.errors || detail?.details?.errors;
-    throw new ApiError(Array.isArray(errors) && errors.length
-      ? `${message}: ${errors.map((error) => error.message || error.msg || String(error)).join("; ")}`
-      : message, response.status, body?.details || detail?.details || null);
-  }
-  if (body === null) throw new ApiError("Сервер вернул ответ без данных.", response.status);
-  return body;
+  return unwrap(await exchangeJson("POST", path, { body: payload, signal }));
 }

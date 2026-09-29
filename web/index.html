@@ -11,12 +11,6 @@
     <header class="site-header">
       <div class="brand"><span class="brand-mark">ABS</span> Inventory &amp; Procurement Assistant</div>
       <nav aria-label="Разделы сайта">
-        <a href="#warehouse">Склад</a>
-        <a href="#journal">Журнал</a>
-        <a href="#movement">Операция</a>
-        <a href="#analytics">Риски и прогноз</a>
-        <a href="#planning">План и бюджет</a>
-        <a href="#ai">AI</a>
         <a href="/docs">API</a>
       </nav>
     </header>
@@ -25,8 +19,8 @@
       <section class="hero" aria-labelledby="page-title">
         <div>
           <p class="eyebrow">Демонстрационный сценарий</p>
-          <h1 id="page-title">От склада к плану закупок</h1>
-          <p>Склад, риски, прогноз и бюджет рассчитаны по данным API на дату снимка.</p>
+          <h1 id="page-title">Проверка API и путь от склада к бюджету</h1>
+          <p>Выберите проверку эндпоинтов или пройдите сквозной маршрут по данным API.</p>
         </div>
         <div class="snapshot">
           <span>Дата снимка</span>
@@ -36,12 +30,37 @@
         </div>
       </section>
 
+      <nav class="screen-switch" aria-label="Выбор экрана">
+        <a id="nav-verification" class="screen-choice" href="#verification">
+          <span>01 · Проверка API</span>
+          <strong>Проверка эндпоинтов</strong>
+          <small>Готовые запросы, ответы и ошибки</small>
+        </a>
+        <a id="nav-route" class="screen-choice" href="#warehouse">
+          <span>02 · Сквозной маршрут</span>
+          <strong>От склада к бюджету</strong>
+          <small>Остатки, риски, прогноз, план и AI</small>
+        </a>
+      </nav>
+
+      <div id="verification-screen" class="screen">
+      <section id="verification" class="panel" aria-labelledby="verification-title">
+        <p class="eyebrow">Первый экран · готовые проверки API</p>
+        <h2 id="verification-title">Проверить тестовое задание</h2>
+        <p class="hint">Запрос и его поля видны до запуска. После нажатия появляются фактический ответ и результат. Читающие проверки используют снимок на <span id="verification-date">…</span>. Записи создают новые документы в общей базе; их остаток может меняться.</p>
+        <div id="verification-cases" class="verification-cards"><p>Ожидаем дату снимка…</p></div>
+        <p><a href="#warehouse">Перейти к подробным данным склада ↓</a></p>
+      </section>
+      </div>
+
+      <div id="route-screen" class="screen" hidden>
       <div class="route" aria-label="Маршрут демонстрации">
         <a href="#warehouse">01 · Склад</a><span>→</span>
         <a href="#analytics">02 · Риски</a><span>→</span>
         <a href="#analytics">03 · Прогноз</a><span>→</span>
         <a href="#planning">04 · План закупок</a><span>→</span>
-        <a href="#planning">05 · Бюджет</a>
+        <a href="#planning">05 · Бюджет</a><span>→</span>
+        <a href="#ai">AI-помощник</a>
       </div>
 
       <section id="warehouse" class="panel" aria-labelledby="stock-title">
@@ -127,6 +146,7 @@
         <p class="eyebrow">AI</p><h2 id="ai-title">AI-помощник — в разработке</h2>
         <p>Чат появится после подключения модели.</p>
       </section>
+      </div>
     </main>
   </body>
 </html>
