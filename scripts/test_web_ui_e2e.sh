@@ -14,11 +14,14 @@ BASE_URL="http://localhost:${WEB_PORT}"
 
 cleanup() {
     docker compose down -v --remove-orphans >/dev/null 2>&1 || true
+    if [[ "${ABS_CLEANUP_IMAGES:-0}" == "1" ]]; then
+        docker rmi "${ABS_WEB_IMAGE:-abs_web:latest}" >/dev/null 2>&1 || true
+    fi
 }
 trap cleanup EXIT
 cleanup
 
-docker compose up -d --build web >/dev/null
+docker compose up -d web >/dev/null
 for ((attempt = 0; attempt < 60; attempt++)); do
     if curl -fsS "${BASE_URL}/health" | grep -q '"status":"healthy"'; then
         break

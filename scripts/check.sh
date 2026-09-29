@@ -26,6 +26,9 @@ cleanup() {
         tail -n 30 "${CHECK_LOG}" >&2
         FAILED=1
     fi
+    if [[ "${ABS_CLEANUP_IMAGES:-0}" == "1" ]]; then
+        docker rmi "${ABS_APP_IMAGE:-abs_app:latest}" "${ABS_WEB_IMAGE:-abs_web:latest}" >/dev/null 2>&1 || true
+    fi
     rm -f "${CHECK_LOG}"
 }
 
@@ -91,6 +94,10 @@ if (( FAILED )); then
     cleanup
     exit 1
 fi
+
+# Предварительная подготовка проверочного веб-образа
+run_check 'сборка веб-интерфейса' \
+    docker compose build --quiet web
 
 # 2. Параллельный запуск тестовых наборов в изолированных Compose-проектах
 run_parallel 'pytest' docker compose run --rm -T test pytest -q --tb=short
