@@ -3,13 +3,107 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ABS Inventory — демонстрация</title>
+    <title>ABS Inventory — склад и закупки</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/js/main.js"></script>
   </head>
   <body>
+    <header class="site-header">
+      <div class="brand"><span class="brand-mark">ABS</span> Inventory &amp; Procurement Assistant</div>
+      <nav aria-label="Разделы сайта">
+        <a href="#warehouse">Склад</a>
+        <a href="#journal">Журнал</a>
+        <a href="#analytics">Риски и прогноз</a>
+        <a href="#planning">План и бюджет</a>
+        <a href="#ai">AI</a>
+        <a href="/docs">API</a>
+      </nav>
+    </header>
+
     <main>
-      <h1>ABS Inventory &amp; Procurement Assistant</h1>
-      <p>Демонстрационный интерфейс готовится. Данные и документация API уже доступны через этот адрес.</p>
-      <p><a href="/docs">Документация API</a></p>
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Демонстрационный сценарий</p>
+          <h1 id="page-title">От склада к плану закупок</h1>
+          <p>Исходные данные, партии и движения доступны здесь. Расчёты рисков и бюджета появятся в следующем проходе.</p>
+        </div>
+        <div class="snapshot">
+          <span>Дата снимка</span>
+          <strong id="snapshot-date">Загружается…</strong>
+          <span id="startup-status" class="status loading" role="status">Проверяем готовность данных…</span>
+          <button id="retry-start" type="button" hidden>Повторить</button>
+        </div>
+      </section>
+
+      <div class="route" aria-label="Маршрут демонстрации">
+        <a href="#warehouse">01 · Склад</a><span>→</span>
+        <a href="#analytics">02 · Риски</a><span>→</span>
+        <a href="#analytics">03 · Прогноз</a><span>→</span>
+        <a href="#planning">04 · План закупок</a><span>→</span>
+        <a href="#planning">05 · Бюджет</a>
+      </div>
+
+      <section id="warehouse" class="panel" aria-labelledby="stock-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">01 / Склад</p><h2 id="stock-title">Остатки по товарам и объектам</h2></div>
+          <div><span id="stock-status" class="status loading" role="status">Ожидаем данные…</span>
+            <button id="stock-retry" type="button" hidden>Повторить</button></div>
+        </div>
+        <p class="hint">Выберите товар, чтобы посмотреть партии. Все количества и показатели получены из API на дату снимка.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Товар</th><th>Объект</th><th>Учётный</th><th>Доступный</th><th>Просроченный</th><th>Средний расход / день</th><th>Дней запаса</th><th>Ближайший срок</th></tr></thead>
+          <tbody id="stock-body"></tbody>
+        </table></div>
+      </section>
+
+      <section id="details" class="panel" aria-labelledby="detail-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Партии</p><h2 id="detail-title">DEMO-OIL · DEMO-MS-01</h2>
+            <p id="detail-balance" class="balance"></p></div>
+          <div><span id="detail-status" class="status loading" role="status">Ожидаем данные…</span>
+            <button id="detail-retry" type="button" hidden>Повторить</button></div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>ID партии</th><th>Номер</th><th>Приход</th><th>Срок годности</th><th>Учётный</th><th>Доступный</th><th>Цена, ₽</th><th>Документ прихода</th><th>Статус</th></tr></thead>
+          <tbody id="batch-body"></tbody>
+        </table></div>
+      </section>
+
+      <section id="journal" class="panel" aria-labelledby="journal-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">История</p><h2 id="journal-title">Журнал движений</h2></div>
+          <div><span id="journal-status" class="status loading" role="status">Ожидаем данные…</span>
+            <button id="journal-retry" type="button" hidden>Повторить</button></div>
+        </div>
+        <form id="journal-filters" class="filters">
+          <label>SKU <input name="sku" placeholder="Например, DEMO-OIL"></label>
+          <label>Объект <input name="location" placeholder="Например, DEMO-MS-01"></label>
+          <label>Тип <select name="type"><option value="">Все</option><option value="receipt">Приход</option><option value="consume">Расход</option><option value="writeoff">Списание</option><option value="return">Возврат</option><option value="correction">Корректировка</option></select></label>
+          <label>С <input name="date_from" type="date"></label>
+          <label>По <input name="date_to" type="date"></label>
+          <button type="submit">Применить фильтры</button>
+        </form>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Дата</th><th>Документ</th><th>SKU</th><th>Объект</th><th>Тип</th><th>Количество</th><th>Распределения и FEFO</th></tr></thead>
+          <tbody id="journal-body"></tbody>
+        </table></div>
+        <div class="pagination"><span id="journal-count">Показано 0 из 0</span>
+          <div><button id="journal-prev" type="button" disabled>← Назад</button>
+            <button id="journal-next" type="button" disabled>Далее →</button></div></div>
+      </section>
+
+      <section id="analytics" class="panel pending" aria-labelledby="analytics-title">
+        <p class="eyebrow">02–03 / Аналитика</p><h2 id="analytics-title">Риски и прогноз</h2>
+        <p>Раздел подключается в следующем проходе реализации.</p>
+      </section>
+      <section id="planning" class="panel pending" aria-labelledby="planning-title">
+        <p class="eyebrow">04–05 / Закупки</p><h2 id="planning-title">План и бюджет</h2>
+        <p>Раздел подключается в следующем проходе реализации.</p>
+      </section>
+      <section id="ai" class="panel pending" aria-labelledby="ai-title">
+        <p class="eyebrow">AI</p><h2 id="ai-title">AI-помощник — в разработке</h2>
+        <p>Чат появится после подключения модели.</p>
+      </section>
     </main>
   </body>
 </html>

@@ -27,6 +27,10 @@ for ((attempt = 0; attempt < 60; attempt++)); do
 done
 curl -fsS "${BASE_URL}/health" | grep -q '"status":"healthy"'
 curl -fsS "${BASE_URL}/" | grep -q 'ABS Inventory'
+curl -fsS "${BASE_URL}/" | grep -q '/js/main.js'
+curl -fsS "${BASE_URL}/js/main.js" | grep -q 'initWarehouse'
+curl -fsS "${BASE_URL}/js/warehouse.js" | grep -q '/api/movements'
+curl -fsS "${BASE_URL}/styles.css" | grep -q 'table-wrap'
 curl -fsS "${BASE_URL}/docs" | grep -q 'Swagger UI'
 curl -fsS "${BASE_URL}/openapi.json" | grep -q '"openapi"'
 
@@ -45,9 +49,28 @@ import json
 import sys
 
 data = json.load(sys.stdin)
-body = json.dumps(data)
-assert "DEMO-OIL" in body
-assert "current_stock" in body
+oil = next(item for item in data["items"] if item["sku"] == "DEMO-OIL" and item["location"] == "DEMO-MS-01")
+assert oil["current_stock"] == "50.000"
+'
+curl -fsS "${BASE_URL}/api/stock/DEMO-EXPIRED?as_of=${AS_OF}" | python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)
+location = next(item for item in data["locations"] if item["location"] == "DEMO-MS-01")
+assert location["current_stock"] == "10.000"
+assert location["available_stock"] == "0.000"
+assert location["batches"]
+'
+curl -fsS "${BASE_URL}/api/movements?sku=DEMO-OIL&date_to=${AS_OF}&limit=2&offset=2" | python3 -c '
+import json
+import sys
+
+page = json.load(sys.stdin)
+assert page["total"] > 2
+assert page["offset"] == 2
+assert len(page["items"]) == 2
+assert all(item["sku"] == "DEMO-OIL" for item in page["items"])
 '
 curl -fsS "${BASE_URL}/api/alerts?as_of=${AS_OF}" | python3 -c '
 import json
