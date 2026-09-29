@@ -67,9 +67,21 @@ def plan_pair_from_snapshot(
             f"INCOMPLETE_HISTORY: История движений неполная "
             f"({consumption_metrics.history_days} дн. из 90)"
         )
+        updated_items = tuple(
+            item.model_copy(
+                update={
+                    "warnings": (
+                        [*item.warnings, history_warn]
+                        if history_warn not in item.warnings
+                        else item.warnings
+                    )
+                }
+            )
+            for item in result.items
+        )
         all_warnings = (history_warn,) + result.warnings
         return PairPlanResult(
-            items=result.items,
+            items=updated_items,
             warnings=all_warnings,
         )
 

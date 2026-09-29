@@ -182,6 +182,8 @@ def test_snapshot_adapter_incomplete_history_warning() -> None:
 
     assert any("INCOMPLETE_HISTORY" in w for w in res.warnings)
     assert any(WARN_INCOMPLETE_HISTORY in w for w in res.warnings)
+    assert len(res.items) > 0
+    assert all(any(WARN_INCOMPLETE_HISTORY in w for w in item.warnings) for item in res.items)
 
 
 def test_missing_lead_time_accounts_for_existing_incoming_orders() -> None:
