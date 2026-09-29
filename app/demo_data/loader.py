@@ -220,6 +220,12 @@ def prepare_demo_data(
         stats = load_demo_data(session, as_of)
         return "created", stats
 
+    if replace:
+        from app.demo_data.replacement import replace_demo_data
+
+        stats = replace_demo_data(session, as_of)
+        return "replaced", stats
+
     existing_as_of = detect_demo_as_of(session)
     if existing_as_of is None:
         raise DemoDataError(
@@ -241,10 +247,7 @@ def prepare_demo_data(
         }
         return "idempotent", stats
 
-    if not replace:
-        raise DemoDataError(
-            f"Демонабор уже создан на дату {existing_as_of.isoformat()}. "
-            f"Для пересборки на дату {as_of.isoformat()} укажите флаг --replace."
-        )
-
-    raise NotImplementedError("Режим --replace будет реализован в задаче 2.1")
+    raise DemoDataError(
+        f"Демонабор уже создан на дату {existing_as_of.isoformat()}. "
+        f"Для пересборки на дату {as_of.isoformat()} укажите флаг --replace."
+    )

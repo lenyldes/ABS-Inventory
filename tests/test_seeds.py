@@ -176,3 +176,30 @@ def test_seed_cli_main(db_session: Session) -> None:
     assert exit_code == 0
     assert db_session.query(func.count(Item.id)).scalar() >= len(SEED_ITEMS)
     assert db_session.query(func.count(Movement.id)).scalar() >= len(SEED_MOVEMENTS)
+
+
+def test_load_seeds_preserves_behavior_with_demo_data(db_session: Session) -> None:
+    """Сохранение поведения стартовых сидов при наличии демонстрационных данных."""
+    from app.demo_data.loader import prepare_demo_data
+
+    # 1. Загрузка демонстрационного набора
+    prepare_demo_data(db_session, as_of=date.today())
+
+    # 2. Загрузка стартовых сидов
+    seed_stats = load_seeds(db_session)
+    assert seed_stats["items"] == len(SEED_ITEMS)
+    assert seed_stats["movements"] == len(SEED_MOVEMENTS)
+
+    # 3. Стартовый сид масла доступен и его остаток корректен
+    oil = db_session.query(Item).filter(Item.sku == "OIL-001").first()
+    loc = db_session.query(Location).filter(Location.code == "MS-01").first()
+    assert oil is not None and loc is not None
+
+    _, _, b_snaps, m_snaps = load_history(db_session, oil.id, loc.id)
+    balance = calculate_stock_balance(b_snaps, m_snaps, as_of=date.today())
+    assert balance.current_stock == Decimal("16.000")
+
+    # 4. Повторный запуск сидов идемпотентен
+    second_stats = load_seeds(db_session)
+    assert second_stats["items"] == 0
+    assert second_stats["movements"] == 0
