@@ -3,8 +3,8 @@
 Проверяет:
 1. Первый запуск: чистая база -> миграции -> сиды -> /health 200 available.
 2. Сбой подготовки схемы: повреждение схемы/ревизии -> отказ готовности 503.
-3. Сохранение данных после down/up: пользовательские записи сохраняются,
-   сиды не дублируются, повторный запуск объявляет готовность 200.
+3. Повторный запуск: пользовательские записи удаляются,
+   исходные сиды восстанавливаются, приложение объявляет готовность 200.
 """
 
 import os
@@ -20,6 +20,7 @@ from sqlalchemy.orm import sessionmaker
 from alembic import command
 from app.core import database
 from app.core.config import get_settings
+from app.demo_data.reset import reset_demo_database
 from app.main import app
 from app.models.catalog import Item, Location, Supplier
 from app.seeds.data import SEED_ITEMS, SEED_LOCATIONS, SEED_SUPPLIERS
@@ -78,7 +79,7 @@ def test_lifecycle_end_to_end_scenarios(
     lifecycle_db_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Сквозной тест сценариев первого запуска, сбоя и повторного старта с сохранностью данных."""
+    """Сквозной тест первого запуска, сбоя и сброса данных при повторном старте."""
     monkeypatch.setenv("DATABASE_URL", lifecycle_db_url)
     get_settings.cache_clear()
     database._engine = None
@@ -98,6 +99,7 @@ def test_lifecycle_end_to_end_scenarios(
 
         # Применяем миграции и сиды
         command.upgrade(alembic_cfg, "head")
+        reset_demo_database()
         with target_factory() as session:
             load_seeds(session)
             assert session.query(func.count(Item.id)).scalar() == len(SEED_ITEMS)
@@ -154,13 +156,14 @@ def test_lifecycle_end_to_end_scenarios(
 
         # Повторный entrypoint контейнера
         command.upgrade(alembic_cfg, "head")
+        reset_demo_database()
         with target_factory() as session:
             load_seeds(session)
-            assert session.query(func.count(Location.id)).scalar() == len(SEED_LOCATIONS) + 1
-            assert session.query(func.count(Supplier.id)).scalar() == len(SEED_SUPPLIERS) + 1
-            assert session.query(func.count(Item.id)).scalar() == len(SEED_ITEMS) + 1
+            assert session.query(func.count(Location.id)).scalar() == len(SEED_LOCATIONS)
+            assert session.query(func.count(Supplier.id)).scalar() == len(SEED_SUPPLIERS)
+            assert session.query(func.count(Item.id)).scalar() == len(SEED_ITEMS)
             saved = session.query(Item).filter(Item.sku == "USER-PERSIST-01").first()
-            assert saved is not None and saved.name == "Пользовательский крем"
+            assert saved is None
 
         assert database.check_database_readiness() == (True, "available")
         assert client.get("/health").status_code == 200

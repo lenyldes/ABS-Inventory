@@ -36,8 +36,18 @@ curl -s "http://localhost:${PORT}/api/stock?location=MS-01" | grep -q '"sku":"OI
 curl -s "http://localhost:${PORT}/api/stock/OIL-001?location=MS-01" | grep -q '"batch_number":"SEED-BATCH-OIL-01"'
 curl -s "http://localhost:${PORT}/api/movements" | grep -q '"doc_number":"SEED-REC-001"'
 echo "Складской API успешно отдал корректные данные по стартовым движениям."
+DEMO_STATUS=$(curl -fsS "http://localhost:${PORT}/api/demo/status")
+printf '%s' "${DEMO_STATUS}" | python3 -c '
+import json
+import sys
+from datetime import date
 
-echo "=== [3/5] Добавление проверочной пользовательской записи ==="
+status = json.load(sys.stdin)
+assert status["ready"] is True
+date.fromisoformat(status["as_of"])
+'
+
+echo "=== [3/5] Изменение живых данных на стенде ==="
 
 COMPOSE_PROJECT_NAME="${PROJECT_NAME}" docker compose exec -T app python -c '
 from app.models.catalog import Item
@@ -49,6 +59,14 @@ s.commit()
 s.close()
 '
 echo "Запись добавлена в базу данных."
+AS_OF=$(printf '%s' "${DEMO_STATUS}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["as_of"])')
+curl -fsS -H 'Content-Type: application/json' \
+    -d "{\"operation_date\":\"${AS_OF}\",\"sku\":\"DEMO-OIL\",\"location\":\"DEMO-MS-01\",\"type\":\"receipt\",\"quantity\":\"2.000\",\"doc_number\":\"DEMO-LIVE-REC-01\",\"batch_number\":\"DEMO-LIVE-BATCH-01\",\"unit_price\":\"100.00\"}" \
+    "http://localhost:${PORT}/api/movements" | python3 -c '
+import json,sys
+body=json.load(sys.stdin)
+assert body["current_stock"] == "52.000"
+'
 
 echo "=== [4/5] Остановка контейнеров без удаления тома (down) и повторный запуск (up) ==="
 COMPOSE_PROJECT_NAME="${PROJECT_NAME}" docker compose down
@@ -72,21 +90,33 @@ until curl -s "http://localhost:${PORT}/health" | grep -q '"status":"healthy"'; 
     fi
 done
 
-echo "Проверка сохранности пользовательской записи и сидов..."
+echo "Проверка восстановления исходных данных на сохранённом томе..."
+NEW_AS_OF=$(curl -fsS "http://localhost:${PORT}/api/demo/status" | python3 -c '
+import json,sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
+body=json.load(sys.stdin)
+assert body == {"ready": True, "as_of": datetime.now(ZoneInfo("Europe/Moscow")).date().isoformat()}
+print(body["as_of"])
+')
 COMPOSE_PROJECT_NAME="${PROJECT_NAME}" docker compose exec -T app python -c '
 from sqlalchemy import func
 from app.models.catalog import Item
-from app.seeds.data import SEED_ITEMS
 from app.core.database import get_session_factory
 f = get_session_factory()
 s = f()
 it = s.query(Item).filter(Item.sku == "PERSIST-VOL-01").first()
-assert it is not None, "Пользовательская запись утеряна!"
-total = s.query(func.count(Item.id)).scalar()
-assert total == len(SEED_ITEMS) + 1, f"Неверное число товаров: {total}"
+assert it is None, "Пользовательская запись сохранилась после сброса"
+demo_count = s.query(func.count(Item.id)).filter(Item.sku.like("DEMO-%")).scalar()
+assert demo_count == 9, f"Неверное число DEMO-SKU: {demo_count}"
 s.close()
 '
-echo "Пользовательские данные успешно сохранены, сиды не продублированы."
+curl -fsS "http://localhost:${PORT}/api/stock?sku=DEMO-OIL&location=DEMO-MS-01&as_of=${NEW_AS_OF}" | python3 -c '
+import json,sys
+body=json.load(sys.stdin)
+assert body["items"][0]["current_stock"] == "50.000"
+'
+echo "Исходные данные восстановлены, правки посетителя удалены."
 
 echo "=== [5/5] Очистка тестового проекта и тома (down -v) ==="
 COMPOSE_PROJECT_NAME="${PROJECT_NAME}" docker compose down -v --remove-orphans

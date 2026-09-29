@@ -1,9 +1,9 @@
 """Сквозной интеграционный тест Compose на отдельном тестовом томе Docker.
 
 Проверяет:
-1. Первый запуск: docker compose up на пустом томе -> миграция -> сиды -> /health 200.
-2. Сохранение пользовательских данных при down (без -v) и повторном up.
-3. Идемпотентность повторного запуска сидов и сохранение готовности.
+1. Первый запуск: миграция, сиды, демонабор и /health 200.
+2. Изменение DEMO- и добавление пользовательской записи до перезапуска.
+3. Восстановление исходного набора при повторном запуске на том же томе.
 4. Очистка изолированного тома при завершении.
 """
 
@@ -11,6 +11,8 @@ import os
 import shutil
 import subprocess
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -52,7 +54,7 @@ def _wait_for_health(url: str, timeout: float = 30.0) -> httpx.Response:
     reason="Тест требует доступности Docker CLI на хосте для управления Compose томами",
 )
 def test_compose_lifecycle_end_to_end_on_isolated_volume() -> None:
-    """Сквозной тест Compose первого запуска, down, повторного up и сохранности тома."""
+    """Сквозной тест создания набора и сброса правок при новом запуске app."""
     env = os.environ.copy()
     env.update(
         {
@@ -83,6 +85,11 @@ def test_compose_lifecycle_end_to_end_on_isolated_volume() -> None:
         assert resp.status_code == 200
         data = resp.json()
         assert data == {"status": "healthy", "database": "available"}
+        demo_status_url = f"http://localhost:{TEST_APP_PORT}/api/demo/status"
+        demo_status = httpx.get(demo_status_url, timeout=5.0)
+        assert demo_status.status_code == 200
+        as_of = demo_status.json()["as_of"]
+        assert demo_status.json() == {"ready": True, "as_of": as_of}
 
         # 2. Добавляем проверочную запись пользователя
         add_user_record_cmd = (
@@ -97,6 +104,22 @@ def test_compose_lifecycle_end_to_end_on_isolated_volume() -> None:
             "s.close()'"
         )
         _run_compose(["exec", "-T", "app", "sh", "-c", add_user_record_cmd], env)
+        movement = httpx.post(
+            f"http://localhost:{TEST_APP_PORT}/api/movements",
+            json={
+                "operation_date": as_of,
+                "sku": "DEMO-OIL",
+                "location": "DEMO-MS-01",
+                "type": "receipt",
+                "quantity": "2.000",
+                "doc_number": "DEMO-COMPOSE-REC-01",
+                "batch_number": "DEMO-COMPOSE-BATCH-01",
+                "unit_price": "100.00",
+            },
+            timeout=5.0,
+        )
+        assert movement.status_code == 201
+        assert movement.json()["current_stock"] == "52.000"
 
         # 3. Остановка проекта без флага -v (сохранение именованного тома)
         _run_compose(["down"], env)
@@ -108,24 +131,33 @@ def test_compose_lifecycle_end_to_end_on_isolated_volume() -> None:
         resp_restart = _wait_for_health(health_url, timeout=30.0)
         assert resp_restart.status_code == 200
         assert resp_restart.json() == {"status": "healthy", "database": "available"}
+        demo_status_restart = httpx.get(demo_status_url, timeout=5.0)
+        assert demo_status_restart.status_code == 200
+        new_as_of = datetime.now(ZoneInfo("Europe/Moscow")).date().isoformat()
+        assert demo_status_restart.json() == {"ready": True, "as_of": new_as_of}
 
-        # Проверяем, что запись на месте, а сиды не дублированы
+        # Проверяем, что запись удалена, а девять DEMO-SKU восстановлены
         verify_data_cmd = (
             "python -c '"
             "from sqlalchemy import func; "
             "from app.models.catalog import Item; "
-            "from app.seeds.data import SEED_ITEMS; "
             "from app.core.database import get_session_factory; "
             "factory = get_session_factory(); "
             "s = factory(); "
             'saved = s.query(Item).filter(Item.sku == "COMPOSE-VOL-01").first(); '
-            'assert saved is not None, "Пользовательская запись не найдена после перезапуска!"; '
-            'assert saved.name == "Том сохранен"; '
-            "total_items = s.query(func.count(Item.id)).scalar(); "
-            "assert total_items == len(SEED_ITEMS) + 1; "
+            'assert saved is None, "Пользовательская запись сохранилась после сброса"; '
+            'demo_count = s.query(func.count(Item.id)).filter(Item.sku.like("DEMO-%")).scalar(); '
+            'assert demo_count == 9, f"Неверное число DEMO-SKU: {demo_count}"; '
             "s.close()'"
         )
         _run_compose(["exec", "-T", "app", "sh", "-c", verify_data_cmd], env)
+        stock = httpx.get(
+            f"http://localhost:{TEST_APP_PORT}/api/stock",
+            params={"sku": "DEMO-OIL", "location": "DEMO-MS-01", "as_of": new_as_of},
+            timeout=5.0,
+        )
+        assert stock.status_code == 200
+        assert stock.json()["items"][0]["current_stock"] == "50.000"
 
     finally:
         # 5. Очистка проекта и изолированного тестового тома
