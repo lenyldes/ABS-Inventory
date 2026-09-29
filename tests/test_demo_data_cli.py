@@ -1,7 +1,7 @@
 """Тесты CLI-команды подготовки демонстрационных данных."""
 
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
@@ -69,3 +69,32 @@ def test_demo_data_cli_errors(capsys: pytest.CaptureFixture[str]) -> None:
         assert code == 1
         err = capsys.readouterr().err
         assert "База данных недоступна" in err
+
+
+def test_demo_data_cli_unexpected_error_masks_secrets(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Проверяет сокрытие секретов при непредвиденной ошибке в CLI."""
+    secret = "postgresql://user:super_secret_password@db.example.com/dbname"
+
+    mock_factory = MagicMock()
+    mock_factory.return_value.__enter__.return_value = MagicMock()
+
+    with (
+        patch("app.demo_data.__main__.check_database_readiness", return_value=(True, "available")),
+        patch("app.demo_data.__main__.get_session_factory", return_value=mock_factory),
+        patch("app.demo_data.__main__.logger") as mock_logger,
+        patch(
+            "app.demo_data.__main__.prepare_demo_data",
+            side_effect=RuntimeError(f"connection failed: {secret}"),
+        ),
+    ):
+        code = main(["--as-of", "2026-09-29"])
+        assert code == 1
+        captured = capsys.readouterr()
+        assert secret not in captured.err
+        assert "RuntimeError" in captured.err
+        assert "Непредвиденная ошибка при подготовке данных" in captured.err
+        mock_logger.exception.assert_called_once()
+        log_args, _ = mock_logger.exception.call_args
+        assert any(secret in str(arg) for arg in log_args)

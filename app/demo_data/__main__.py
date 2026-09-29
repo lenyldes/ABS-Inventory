@@ -1,12 +1,15 @@
 """CLI-команда подготовки и проверки демонстрационных данных."""
 
 import argparse
+import logging
 import sys
 from datetime import date, datetime
 
 from app.core.database import check_database_readiness, get_session_factory
 from app.core.timezone import today_in_moscow
 from app.demo_data.loader import DemoDataError, prepare_demo_data
+
+logger = logging.getLogger(__name__)
 
 
 def parse_as_of(date_str: str) -> date:
@@ -106,9 +109,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"Операция не поддерживается: {err}\n")
         return 1
     except Exception as err:
-        sys.stderr.write(
-            f"Непредвиденная ошибка при подготовке данных: {type(err).__name__}: {err}\n"
-        )
+        logger.exception("Непредвиденная ошибка при подготовке данных: %s", err)
+        sys.stderr.write(f"Непредвиденная ошибка при подготовке данных: {type(err).__name__}\n")
         return 1
 
 

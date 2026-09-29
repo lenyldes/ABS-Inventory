@@ -16,6 +16,7 @@ from app.demo_data.inspection import (
     detect_demo_as_of,
     get_existing_demo_keys,
     verify_demo_keys,
+    verify_demo_values,
 )
 from app.demo_data.movements import (
     DEMO_BASE_RECEIPT_DOC,
@@ -237,6 +238,7 @@ def prepare_demo_data(
     verify_demo_keys(session, keys)
 
     if as_of == existing_as_of:
+        verify_demo_values(session, as_of)
         stats = {
             "locations": len(keys["locations"]),
             "suppliers": len(keys["suppliers"]),

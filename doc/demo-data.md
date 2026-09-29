@@ -81,7 +81,7 @@ docker compose run --rm app python -m app.demo_data --as-of YYYY-MM-DD [--replac
   - `expired_stock`: `0.000`.
   - `average_daily_consumption`: `1.000000` (90 единиц за 90-дневное расчетное окно).
   - `days_of_stock`: `50.000` дней.
-  - `nearest_expiry_date`: `2026-12-18` (партия годна еще 80 дней).
+  - `nearest_expiry_date`: `2027-03-28` (партия годна еще 180 дней).
 
 ### Шаг 2. Расчет прогноза потребления и потребности
 - **Запрос**: `POST /api/forecast`
