@@ -21,10 +21,17 @@ _ZERO_QTY = Decimal("0.000")
 def set_repeatable_read_snapshot(session: Session) -> None:
     """Устанавливает уровень изоляции транзакции REPEATABLE READ для снимка БД."""
     if session.in_transaction():
-        current_iso = session.execute(text("SHOW transaction_isolation")).scalar()
+        current_iso = None
+        try:
+            current_iso = session.execute(text("SHOW transaction_isolation")).scalar()
+        except Exception:
+            pass
         if current_iso and str(current_iso).lower() == "repeatable read":
             return
-        session.rollback()
+        raise RuntimeError(
+            "Невозможно установить уровень изоляции REPEATABLE READ: "
+            "в сессии уже начата транзакция с несовместимым уровнем изоляции."
+        )
     session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
 
 
@@ -97,9 +104,7 @@ def load_plan_database_snapshot(
     location_code: str | None = None,
     category: str | None = None,
 ) -> PlanDatabaseSnapshot:
-    """Формирует согласованный снимок БД в REPEATABLE READ через пакетные выборки O(1)."""
-    set_repeatable_read_snapshot(session)
-
+    """Формирует согласованный снимок БД через пакетные выборки O(1)."""
     catalog_pairs = load_catalog_pairs(session, location_code, category)
     if not catalog_pairs:
         return PlanDatabaseSnapshot(as_of=as_of, pairs=(), existing_orders=())
