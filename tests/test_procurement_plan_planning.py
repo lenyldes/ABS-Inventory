@@ -69,6 +69,9 @@ def test_two_orders_over_three_months_horizon() -> None:
     assert order1.quantity == Decimal("300.000")
     assert order1.unit_price == Decimal("120.00")
     assert order1.total_cost == Decimal("36000.00")
+    assert order1.metrics["initial_stock"] == "100.000"
+    assert order1.metrics["incoming_orders"] == "0.000"
+    assert order1.metrics["expected_orders_qty"] == "0.000"
 
     assert order2.order_date == date(2026, 10, 6)
     assert order2.delivery_date == date(2026, 10, 11)

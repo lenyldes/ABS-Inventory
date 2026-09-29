@@ -241,3 +241,44 @@ def test_missing_lead_time_accounts_for_existing_incoming_orders() -> None:
     assert item.quantity == Decimal("80.000")
     assert item.total_cost == Decimal("8000.00")
     assert item.metrics["usable_stock"] == "70.000"
+    assert item.metrics["initial_stock"] == "20.000"
+    assert item.metrics["incoming_orders"] == "150.000"
+    assert item.metrics["expected_orders_qty"] == "150.000"
+
+
+def test_missing_lead_time_accounts_for_expired_batches() -> None:
+    """Недатированная оценка исключает сгорающие по сроку годности партии (FEFO)."""
+    as_of = date(2026, 9, 15)
+    consumption = Decimal("2.000000")
+    batch = BatchSnapshot(
+        id=2,
+        item_id=2,
+        location_id=1,
+        batch_number="B-EXP",
+        receipt_doc_number="DOC-EXP",
+        unit_price=Decimal("50.00"),
+        receipt_date=date(2026, 9, 1),
+        expiry_date=date(2026, 9, 20),
+    )
+    res = plan_pair_procurement(
+        as_of=as_of,
+        horizon_months=1,
+        service_days=0,
+        sku="SKU-UNDATED-EXP",
+        category="Категория",
+        location="LOC-1",
+        average_daily_consumption=consumption,
+        batches=[batch],
+        batch_stocks={2: Decimal("50.000")},
+        lead_time_days=None,
+        unit_price=Decimal("50.00"),
+    )
+
+    assert len(res.items) == 1
+    item = res.items[0]
+    # Горизонт 30 дней -> 60 шт. С 16 по 20.09 списано 10 шт, 40 шт сгорело -> нужно заказать 50 шт
+    assert item.raw_quantity == Decimal("50.000")
+    assert item.quantity == Decimal("50.000")
+    assert item.metrics["total_expired"] == "40.000"
+    assert item.metrics["usable_stock"] == "10.000"
+    assert item.metrics["initial_stock"] == "50.000"

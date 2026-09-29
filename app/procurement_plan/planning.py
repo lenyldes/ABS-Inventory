@@ -1,7 +1,6 @@
 """Чистая логика дневного планирования повторных закупок для пары «товар + объект»."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -18,23 +17,15 @@ from app.procurement.rounding import (
     round_order_quantity,
 )
 from app.procurement_plan.dates import compute_coverage_interval
+from app.procurement_plan.domain import PairPlanResult
 from app.procurement_plan.item_builder import build_plan_item
-from app.procurement_plan.undated import calculate_undated_item
+from app.procurement_plan.undated import plan_undated_pair_procurement
 from app.procurement_plan.warnings import (
-    WARN_LEAD_TIME_UNKNOWN,
     WARN_NO_DEMAND_HISTORY,
     WARN_ORDER_DELAYED,
     WARN_PRICE_UNKNOWN,
     format_temporary_deficit_warning,
 )
-
-
-@dataclass(frozen=True)
-class PairPlanResult:
-    """Результат планирования повторных закупок для пары «товар + объект»."""
-
-    items: tuple[PlanItemSchema, ...]
-    warnings: tuple[str, ...]
 
 
 def plan_pair_procurement(
@@ -65,6 +56,13 @@ def plan_pair_procurement(
 
     pair_warnings: list[str] = []
 
+    # Исходный остаток и объём ожидаемых поставок для метрик позиции
+    initial_stock = sum((batch_stocks or {}).values(), ZERO_QTY)
+    incoming_orders_qty = sum(
+        (order.pending_qty for order in incoming_orders if order.pending_qty > ZERO_QTY),
+        ZERO_QTY,
+    )
+
     # Обработка задержанных заказов: expected_date <= as_of
     has_delayed_orders = any(
         order.expected_date <= as_of and order.pending_qty > ZERO_QTY for order in incoming_orders
@@ -72,29 +70,17 @@ def plan_pair_procurement(
     if has_delayed_orders:
         pair_warnings.append(WARN_ORDER_DELAYED)
 
-    # Недатированная позиция при отсутствии срока поставки
+    # Недатированная позиция при отсутствии срока поставки: расчёт по FEFO
     if lead_time_days is None:
-        _, horizon_end, _ = compute_horizon_dates(
-            as_of=as_of,
-            horizon_months=horizon_months,
-        )
-        stock_qty = sum((batch_stocks or {}).values(), ZERO_QTY)
-        incoming_in_horizon = sum(
-            (
-                order.pending_qty
-                for order in incoming_orders
-                if order.expected_date <= horizon_end and order.pending_qty > ZERO_QTY
-            ),
-            ZERO_QTY,
-        )
-        usable_stock = stock_qty + incoming_in_horizon
-        undated_item = calculate_undated_item(
+        return plan_undated_pair_procurement(
             as_of=as_of,
             sku=sku,
             category=category,
             location=location,
             average_daily_consumption=average_daily_consumption,
-            usable_stock=usable_stock,
+            batches=batches,
+            batch_stocks=batch_stocks,
+            incoming_orders=incoming_orders,
             service_days=service_days,
             package_size=package_size,
             min_order_qty=min_order_qty,
@@ -103,16 +89,10 @@ def plan_pair_procurement(
             supplier_id=supplier_id,
             supplier_name=supplier_name,
             horizon_months=horizon_months,
-        )
-        if has_delayed_orders and WARN_ORDER_DELAYED not in undated_item.warnings:
-            undated_item.warnings.append(WARN_ORDER_DELAYED)
-        if WARN_LEAD_TIME_UNKNOWN not in pair_warnings:
-            pair_warnings.append(WARN_LEAD_TIME_UNKNOWN)
-        if unit_price is None and WARN_PRICE_UNKNOWN not in pair_warnings:
-            pair_warnings.append(WARN_PRICE_UNKNOWN)
-        return PairPlanResult(
-            items=(undated_item,),
-            warnings=tuple(pair_warnings),
+            initial_stock=initial_stock,
+            incoming_orders_qty=incoming_orders_qty,
+            has_delayed_orders=has_delayed_orders,
+            pair_warnings=pair_warnings,
         )
 
     horizon_start, horizon_end, days_count = compute_horizon_dates(
@@ -170,9 +150,19 @@ def plan_pair_procurement(
         order_date = max(as_of, calc_order_date)
         delivery_date = order_date + timedelta(days=lead_time_days)
 
-        is_early_deficit = calc_order_date < as_of
-        if is_early_deficit:
-            deficit_warn = format_temporary_deficit_warning(drop_date, delivery_date)
+        is_early_order = calc_order_date < as_of
+
+        # Фактический дефицит: строго дни с непокрытым расходом (daily_deficit > 0)
+        actual_deficit_steps = [
+            s
+            for s in fefo_res.daily_steps
+            if s.date <= delivery_date and s.daily_deficit > ZERO_QTY
+        ]
+        has_actual_deficit = is_early_order and len(actual_deficit_steps) > 0
+        deficit_start = actual_deficit_steps[0].date if has_actual_deficit else None
+
+        if has_actual_deficit and deficit_start is not None:
+            deficit_warn = format_temporary_deficit_warning(deficit_start, delivery_date)
             if deficit_warn not in pair_warnings:
                 pair_warnings.append(deficit_warn)
 
@@ -238,8 +228,11 @@ def plan_pair_procurement(
             drop_date=drop_date,
             package_size=package_size,
             min_order_qty=min_order_qty,
-            is_early_deficit=is_early_deficit,
+            has_actual_deficit=has_actual_deficit,
+            deficit_start=deficit_start,
             has_delayed_orders=has_delayed_orders,
+            initial_stock=initial_stock,
+            incoming_orders_qty=incoming_orders_qty,
         )
         items.append(item_schema)
 

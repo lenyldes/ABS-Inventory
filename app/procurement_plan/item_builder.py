@@ -7,6 +7,7 @@ from typing import Any
 from app.api.plan_schemas import PlanItemSchema
 from app.procurement.rounding import (
     QTY_QUANT,
+    ZERO_QTY,
     calculate_total_cost,
     round_unit_price,
 )
@@ -38,16 +39,19 @@ def build_plan_item(
     drop_date: date,
     package_size: Decimal | None,
     min_order_qty: Decimal | None,
-    is_early_deficit: bool,
+    has_actual_deficit: bool,
+    deficit_start: date | None,
     has_delayed_orders: bool,
+    initial_stock: Decimal = ZERO_QTY,
+    incoming_orders_qty: Decimal = ZERO_QTY,
 ) -> PlanItemSchema:
     """Создаёт объект позиции плана с расчётом стоимости, метрик и предупреждений."""
     rounded_price = round_unit_price(unit_price)
     total_cost = calculate_total_cost(quantity, rounded_price)
 
     item_warnings: list[str] = []
-    if is_early_deficit:
-        item_warnings.append(format_temporary_deficit_warning(drop_date, delivery_date))
+    if has_actual_deficit and deficit_start is not None:
+        item_warnings.append(format_temporary_deficit_warning(deficit_start, delivery_date))
     if has_delayed_orders:
         item_warnings.append(WARN_ORDER_DELAYED)
     if rounded_price is None:
@@ -61,15 +65,18 @@ def build_plan_item(
         "package_size": str(package_size) if package_size is not None else None,
         "min_order_qty": str(min_order_qty) if min_order_qty is not None else None,
         "safety_stock": str(target_safety_stock),
+        "initial_stock": str(initial_stock.quantize(QTY_QUANT)),
+        "incoming_orders": str(incoming_orders_qty.quantize(QTY_QUANT)),
+        "expected_orders_qty": str(incoming_orders_qty.quantize(QTY_QUANT)),
         "drop_date": drop_date.isoformat(),
         "coverage_days": coverage_days,
     }
-    if is_early_deficit:
-        metrics["deficit_start"] = drop_date.isoformat()
+    if has_actual_deficit and deficit_start is not None:
+        metrics["deficit_start"] = deficit_start.isoformat()
         metrics["deficit_end"] = (
             (delivery_date - timedelta(days=1)).isoformat()
-            if delivery_date > drop_date
-            else drop_date.isoformat()
+            if delivery_date > deficit_start
+            else deficit_start.isoformat()
         )
         metrics["deficit_delivery_date"] = delivery_date.isoformat()
 

@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from app.api.plan_breakdown_schemas import (
     PlanBudgetSchema,
@@ -28,6 +28,15 @@ class PlanRequest(BaseModel):
         default=None,
         description="Контрольная дата актуальности (по умолчанию сегодня в Europe/Moscow)",
     )
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def validate_as_of_type(cls, v: Any) -> Any:
+        """Запрещает передачу чисел (timestamp) и требует строковый формат даты."""
+        if v is not None and not isinstance(v, (str, date)):
+            raise ValueError("Поле as_of должно быть строкой формата YYYY-MM-DD или date")
+        return v
+
     horizon_months: StrictInt = Field(
         ...,
         description="Горизонт плана в месяцах (только 1, 3, 6 или 12)",

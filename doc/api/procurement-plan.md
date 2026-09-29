@@ -68,6 +68,17 @@
    - **Временный дефицит (`TEMPORARY_DEFICIT`)**: если остаток исчерпывается до даты прихода ближайшего заказа, заказ предлагается на `as_of`, а необеспеченные дни отмечаются предупреждением с точным интервалом (`дефицит с YYYY-MM-DD до YYYY-MM-DD`). Товар не считается прибывшим раньше срока.
    - **Задержанные заказы (`ORDER_DELAYED`)**: ожидаемые заказы с датой $\le as\_of$ исключаются из покрытия до уточнения даты.
    - **Поставка за горизонтом (`DELIVERY_BEYOND_HORIZON`)**: если дата поставки выходит за конец горизонта, заказ внутри горизонта не создаётся.
+4. **Метрики позиции (`metrics`)**:
+   Каждая позиция плана содержит служебный объект `metrics` с прозрачными исходными параметрами:
+   - `initial_stock` (str): начальный физический остаток на складе на дату `as_of`;
+   - `incoming_orders` / `expected_orders_qty` (str): суммарный объём ожидаемых неполученных заказов;
+   - `average_daily_consumption` (str): среднесуточный расход за 90 дней;
+   - `lead_time_days` (int|null): плечо доставки поставщика в календарных днях;
+   - `service_days` (int): дни целевого страхового запаса;
+   - `safety_stock` (str): целевой страховой запас;
+   - `drop_date` (str): дата снижения запаса ниже страхового порога;
+   - `coverage_days` (int): дней в интервале покрытия поставки;
+   - `deficit_start`, `deficit_end`, `deficit_delivery_date` (str): границы интервала дефицита (при наличии).
 
 ---
 
@@ -116,6 +127,17 @@ Content-Type: application/json
       "unit_price": "100.00",
       "price_source": "estimated",
       "total_cost": "32000.00",
+      "metrics": {
+        "initial_stock": "100.000",
+        "incoming_orders": "100.000",
+        "expected_orders_qty": "100.000",
+        "average_daily_consumption": "10.000000",
+        "safety_stock": "30.000",
+        "lead_time_days": 5,
+        "service_days": 3,
+        "drop_date": "2026-10-03",
+        "coverage_days": 32
+      },
       "warnings": []
     }
   ],

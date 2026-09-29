@@ -4,8 +4,12 @@ from datetime import date
 from decimal import Decimal
 
 from app.forecasting.domain import IncomingOrderSnapshot
+from app.inventory.domain import BatchSnapshot
 from app.procurement_plan.planning import plan_pair_procurement
-from app.procurement_plan.warnings import WARN_ORDER_DELAYED
+from app.procurement_plan.warnings import (
+    WARN_ORDER_DELAYED,
+    WARN_TEMPORARY_DEFICIT,
+)
 
 
 def test_delayed_orders_arrive_as_of_and_emit_warning() -> None:
@@ -113,6 +117,96 @@ def test_temporary_deficit_orders_on_as_of_with_warning() -> None:
     assert item.metrics["deficit_start"] == "2026-09-11"
     assert item.metrics["deficit_end"] == "2026-09-16"
     assert item.metrics["deficit_delivery_date"] == "2026-09-17"
+    assert item.metrics["initial_stock"] == "0.000"
+    assert item.metrics["incoming_orders"] == "0.000"
+    assert item.metrics["expected_orders_qty"] == "0.000"
+
+
+def test_temporary_deficit_with_service_days_actual_deficit_interval() -> None:
+    """При service_days > 0 дефицит начинается со дня исчерпания остатка, а не с даты падения."""
+    as_of = date(2026, 9, 10)
+    consumption = Decimal("10.000000")
+    lead_time = 7  # поставка 17.09
+    service_days = 5  # страховой запас 50.000
+
+    batch = BatchSnapshot(
+        id=1,
+        item_id=1,
+        location_id=1,
+        batch_number="B-STOCK",
+        receipt_doc_number="DOC-1",
+        unit_price=Decimal("100.00"),
+        receipt_date=date(2026, 9, 1),
+        expiry_date=None,
+    )
+
+    res = plan_pair_procurement(
+        as_of=as_of,
+        horizon_months=1,
+        service_days=service_days,
+        sku="SKU-DEFICIT-SAFETY",
+        category="Категория",
+        location="LOC-1",
+        average_daily_consumption=consumption,
+        batches=[batch],
+        batch_stocks={1: Decimal("30.000")},
+        lead_time_days=lead_time,
+        unit_price=Decimal("100.00"),
+    )
+
+    assert len(res.items) >= 1
+    item = res.items[0]
+    assert item.order_date == as_of
+    assert item.delivery_date == date(2026, 9, 17)
+    # Остаток 30 шт обеспечивает расход с 11 по 13.09. Фактический дефицит начинается 14.09!
+    assert item.metrics["deficit_start"] == "2026-09-14"
+    assert item.metrics["deficit_end"] == "2026-09-16"
+    assert item.metrics["deficit_delivery_date"] == "2026-09-17"
+    assert item.metrics["initial_stock"] == "30.000"
+    assert item.metrics["incoming_orders"] == "0.000"
+    assert any("2026-09-14" in w and "2026-09-17" in w for w in item.warnings)
+    assert any("2026-09-14" in w and "2026-09-17" in w for w in res.warnings)
+
+
+def test_safety_stock_drop_without_physical_deficit_no_warning() -> None:
+    """Падение ниже страхового запаса без физического дефицита не порождает TEMPORARY_DEFICIT."""
+    as_of = date(2026, 9, 10)
+    consumption = Decimal("10.000000")
+    lead_time = 4  # поставка 14.09
+    service_days = 5  # порог 50.000
+
+    batch = BatchSnapshot(
+        id=2,
+        item_id=2,
+        location_id=1,
+        batch_number="B-ENOUGH",
+        receipt_doc_number="DOC-2",
+        unit_price=Decimal("100.00"),
+        receipt_date=date(2026, 9, 1),
+        expiry_date=None,
+    )
+
+    res = plan_pair_procurement(
+        as_of=as_of,
+        horizon_months=1,
+        service_days=service_days,
+        sku="SKU-NO-DEFICIT",
+        category="Категория",
+        location="LOC-1",
+        average_daily_consumption=consumption,
+        batches=[batch],
+        batch_stocks={2: Decimal("45.000")},
+        lead_time_days=lead_time,
+        unit_price=Decimal("100.00"),
+    )
+
+    assert len(res.items) >= 1
+    item = res.items[0]
+    # Заказ оформлен на as_of, поставка 14.09. До поставки потрачено 40 шт, остаток 5 шт > 0.
+    assert not any("TEMPORARY_DEFICIT" in w for w in item.warnings)
+    assert not any(WARN_TEMPORARY_DEFICIT in w for w in res.warnings)
+    assert "deficit_start" not in item.metrics
+    assert item.metrics["initial_stock"] == "45.000"
 
 
 def test_delivery_beyond_horizon_no_order_placed() -> None:

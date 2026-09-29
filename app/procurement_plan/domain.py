@@ -3,10 +3,18 @@
 from dataclasses import dataclass
 from datetime import date
 
-from app.api.plan_schemas import ExistingOrderSnapshotSchema
+from app.api.plan_schemas import ExistingOrderSnapshotSchema, PlanItemSchema
 from app.forecasting.domain import ProcurementContext
 from app.inventory.domain import BatchSnapshot, MovementSnapshot
 from app.models.catalog import Item, Location
+
+
+@dataclass(frozen=True)
+class PairPlanResult:
+    """Результат планирования повторных закупок для пары «товар + объект»."""
+
+    items: tuple[PlanItemSchema, ...]
+    warnings: tuple[str, ...]
 
 
 @dataclass(frozen=True)
