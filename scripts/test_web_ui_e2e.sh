@@ -32,6 +32,8 @@ curl -fsS "${BASE_URL}/health" | grep -q '"status":"healthy"'
 curl -fsS "${BASE_URL}/" | grep -q 'ABS Inventory'
 curl -fsS "${BASE_URL}/" | grep -q '/js/main.js'
 curl -fsS "${BASE_URL}/js/main.js" | grep -q 'initWarehouse'
+curl -fsS "${BASE_URL}/js/main.js" | grep -q 'initAnalytics'
+curl -fsS "${BASE_URL}/js/analytics.js" | grep -q '/api/procurement/plan'
 curl -fsS "${BASE_URL}/js/warehouse.js" | grep -q '/api/movements'
 curl -fsS "${BASE_URL}/styles.css" | grep -q 'table-wrap'
 curl -fsS "${BASE_URL}/docs" | grep -q 'Swagger UI'
@@ -89,9 +91,27 @@ curl -fsS -H 'Content-Type: application/json' \
 import json
 import sys
 
-body = json.dumps(json.load(sys.stdin))
-assert "DEMO-OIL" in body
-assert "known_total" in body
+body = json.load(sys.stdin)
+assert body["horizon_months"] == 3
+assert body["horizon_start"] and body["horizon_end"]
+oil = next(item for item in body["items"] if item["sku"] == "DEMO-OIL" and item["location"] == "DEMO-MS-01")
+assert oil["quantity"] == "30.000"
+assert oil["total_cost"] == "3000.00"
+assert body["budget"]["known_total"]
+assert body["budget"]["by_month"]
+assert any(item["total_cost"] is None for item in body["items"])
+assert any(item["order_date"] is None for item in body["items"])
+assert body["explanation"]["formulas"]
+'
+curl -fsS -H 'Content-Type: application/json' \
+    -d "{\"as_of\":\"${AS_OF}\",\"horizon_months\":1}" \
+    "${BASE_URL}/api/procurement/plan" | python3 -c '
+import json
+import sys
+
+body = json.load(sys.stdin)
+assert body["horizon_months"] == 1
+assert 28 <= body["days_count"] <= 31
 '
 
 # Повреждённый ключ делает демонабор неполным; bootstrap не допускает запуск API.

@@ -1,11 +1,13 @@
 import { getJson } from "./api.js";
 import { state } from "./state.js";
 import { initWarehouse } from "./warehouse.js";
+import { initAnalytics } from "./analytics.js";
 
 const startup = document.querySelector("#startup-status");
 const snapshot = document.querySelector("#snapshot-date");
 const retry = document.querySelector("#retry-start");
 const warehouse = initWarehouse(state);
+const analytics = initAnalytics(state);
 
 async function start() {
   retry.hidden = true;
@@ -18,10 +20,10 @@ async function start() {
     snapshot.textContent = status.as_of;
     startup.className = "status success";
     startup.textContent = `Данные на ${status.as_of}`;
-    await warehouse.load();
+    await Promise.all([warehouse.load(), analytics.load()]);
   } catch (error) {
     startup.className = "status error";
-    startup.textContent = `Не удалось открыть склад: ${error.message}`;
+    startup.textContent = `Не удалось открыть данные: ${error.message}`;
     retry.hidden = false;
   }
 }

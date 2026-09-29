@@ -25,7 +25,7 @@
         <div>
           <p class="eyebrow">Демонстрационный сценарий</p>
           <h1 id="page-title">От склада к плану закупок</h1>
-          <p>Исходные данные, партии и движения доступны здесь. Расчёты рисков и бюджета появятся в следующем проходе.</p>
+          <p>Склад, риски, прогноз и бюджет рассчитаны по данным API на дату снимка.</p>
         </div>
         <div class="snapshot">
           <span>Дата снимка</span>
@@ -92,13 +92,33 @@
             <button id="journal-next" type="button" disabled>Далее →</button></div></div>
       </section>
 
-      <section id="analytics" class="panel pending" aria-labelledby="analytics-title">
-        <p class="eyebrow">02–03 / Аналитика</p><h2 id="analytics-title">Риски и прогноз</h2>
-        <p>Раздел подключается в следующем проходе реализации.</p>
+      <section id="analytics" class="panel" aria-labelledby="analytics-title">
+        <p class="eyebrow">02 / Риски</p><h2 id="analytics-title">Предупреждения</h2>
+        <span id="alerts-status" class="status loading" role="status">Ожидаем данные…</span>
+        <button id="alerts-retry" type="button" hidden>Повторить</button>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Тип</th><th>Важность</th><th>Товар</th><th>Объект</th><th>Причина и показатели</th></tr></thead>
+          <tbody id="alerts-body"></tbody>
+        </table></div>
+        <p class="eyebrow">03 / Прогноз</p><h2>Прогноз выбранной пары</h2>
+        <p id="forecast-pair" class="hint"></p>
+        <span id="forecast-status" class="status loading" role="status">Ожидаем данные…</span>
+        <button id="forecast-retry" type="button" hidden>Повторить</button>
+        <div id="forecast-result"></div>
       </section>
-      <section id="planning" class="panel pending" aria-labelledby="planning-title">
+      <section id="planning" class="panel" aria-labelledby="planning-title">
         <p class="eyebrow">04–05 / Закупки</p><h2 id="planning-title">План и бюджет</h2>
-        <p>Раздел подключается в следующем проходе реализации.</p>
+        <form id="plan-filters" class="filters">
+          <label>Горизонт <select name="horizon_months"><option value="1">1 месяц</option><option value="3" selected>3 месяца</option><option value="6">6 месяцев</option><option value="12">12 месяцев</option></select></label>
+          <label>Объект <input name="location" placeholder="Все объекты"></label>
+          <label>Категория <input name="category" placeholder="Все категории"></label>
+          <label>Страховой запас, дней <input name="service_days" type="number" min="0" step="1" value="14" required></label>
+          <label>Лимит, ₽ <input name="budget_limit" type="number" min="0" step="0.01" placeholder="Без лимита"></label>
+          <button type="submit">Пересчитать</button>
+        </form>
+        <span id="plan-status" class="status loading" role="status">Ожидаем данные…</span>
+        <button id="plan-retry" type="button" hidden>Повторить</button>
+        <div id="plan-result"></div>
       </section>
       <section id="ai" class="panel pending" aria-labelledby="ai-title">
         <p class="eyebrow">AI</p><h2 id="ai-title">AI-помощник — в разработке</h2>

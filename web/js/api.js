@@ -50,3 +50,30 @@ export async function getAllPages(path, params = {}, { signal } = {}) {
     if (!page.items.length || offset >= page.total) return items;
   } while (true);
 }
+
+export async function postJson(path, payload, { signal } = {}) {
+  let response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
+    throw new ApiError("Не удалось связаться с сервером. Проверьте подключение и повторите запрос.");
+  }
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = body?.detail;
+    const message = body?.message || detail?.message ||
+      (typeof detail === "string" ? detail : `Ошибка сервера (${response.status})`);
+    const errors = body?.details?.errors || detail?.details?.errors;
+    throw new ApiError(Array.isArray(errors) && errors.length
+      ? `${message}: ${errors.map((error) => error.message || error.msg || String(error)).join("; ")}`
+      : message, response.status, body?.details || detail?.details || null);
+  }
+  if (body === null) throw new ApiError("Сервер вернул ответ без данных.", response.status);
+  return body;
+}
