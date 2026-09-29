@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.api.alerts import router as alerts_router
 from app.api.amendments import router as amendments_router
+from app.api.demo_status import router as demo_status_router
 from app.api.errors import register_error_handlers
 from app.api.forecast import router as forecast_router
 from app.api.health import router as health_router
@@ -28,6 +29,7 @@ app.include_router(amendments_router)
 app.include_router(forecast_router)
 app.include_router(alerts_router)
 app.include_router(procurement_plan_router)
+app.include_router(demo_status_router)
 
 
 @app.get("/")

@@ -128,3 +128,15 @@ def verify_demo_keys(
 
     if as_of is not None:
         verify_demo_values(session, as_of)
+
+
+def require_demo_as_of(session: Session) -> date:
+    """Возвращает дату полного демонабора без изменения записей."""
+    verify_demo_keys(session, get_existing_demo_keys(session))
+    as_of = detect_demo_as_of(session)
+    if as_of is None:
+        raise DemoDataError(
+            "Демонабор не полон или поврежден: "
+            f"отсутствует опорное движение {DEMO_BASE_RECEIPT_DOC}"
+        )
+    return as_of
