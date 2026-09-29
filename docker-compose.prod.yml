@@ -1,0 +1,11 @@
+services:
+  web:
+    container_name: ${ABS_WEB_CONTAINER:-abs_web}
+    networks:
+      - default
+      - caddy-public
+
+networks:
+  default:
+  caddy-public:
+    external: true
