@@ -65,10 +65,13 @@
 ```
 
 ### Как считается остаток (требование ТЗ)
+
 Остаток **не хранится отдельным изменяемым полем** в БД — это исключает рассинхронизацию. Он рассчитывается на лету функцией `calculate_stock_balance` (`app/inventory/calculator.py`) на любую дату `as_of`:
+
 $$\text{Stock}(sku, loc) = \sum \text{receipt} + \sum \text{return} \pm \sum \text{correction} - \sum \text{consume} - \sum \text{writeoff}$$
-- **Доступный остаток**: только непросроченные партии ($\text{expiry\_date} \ge as\_of$ или без срока годности).
-- **Просроченный остаток**: партии с $\text{expiry\_date} < as\_of$ уходят в `expired_quantity`, блокируются для отпуска (`consume`) и подлежат списанию (`writeoff`).
+
+- **Доступный остаток**: только непросроченные партии (`expiry_date >= as_of` или без срока годности).
+- **Просроченный остаток**: партии с `expiry_date < as_of` уходят в `expired_quantity`, блокируются для отпуска (`consume`) и подлежат списанию (`writeoff`).
 - **Конкурентные списания**: защищены транзакционными блокировками `stock_locks` (`SELECT ... FOR UPDATE` по товару и объекту).
 
 ---
