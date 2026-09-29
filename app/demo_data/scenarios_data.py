@@ -106,7 +106,7 @@ DEMO_SCENARIOS: list[DemoScenario] = [
         goal="Просрочка остаётся в учётном остатке: expired, учётный и доступный остатки",
         method="GET",
         path="/api/stock",
-        params={"limit": 100},
+        params={"limit": 100, "as_of": "2026-09-29"},
         selector={"sku": "DEMO-EXPIRED", "location": "DEMO-MS-01"},
         expected={
             "sku": "DEMO-EXPIRED",

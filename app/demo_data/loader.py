@@ -221,6 +221,7 @@ def prepare_demo_data(
         return "created", stats
 
     if replace:
+        verify_demo_keys(session, keys)
         from app.demo_data.replacement import replace_demo_data
 
         stats = replace_demo_data(session, as_of)

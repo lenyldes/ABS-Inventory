@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.demo_data.loader import prepare_demo_data
-from app.demo_data.scenarios import TEST_DEMO_AS_OF
+from app.demo_data.scenarios import TEST_DEMO_AS_OF, get_demo_scenario
 from app.main import app
 from tests.demo_data_api_alerts_checks import (
     verify_deficit_scenario,
@@ -37,50 +37,54 @@ def test_demo_data_api_scenarios_e2e(client: TestClient, db_session: Session) ->
     assert mode == "created"
     assert stats["movements"] == 105
 
-    # Вызовы четырёх целевых API
-    stock_resp = client.get("/api/stock", params={"limit": 100})
+    # Вызовы четырёх целевых API из записей каталога сценариев
+    sc_stock = get_demo_scenario("expired-stock")
+    stock_resp = client.request(sc_stock.method, sc_stock.path, params=sc_stock.params)
     assert stock_resp.status_code == 200
     stock_items = stock_resp.json()["items"]
 
-    fc_oil_resp = client.post(
-        "/api/forecast",
-        json={
-            "sku": "DEMO-OIL",
-            "location": "DEMO-MS-01",
-            "as_of": TEST_DEMO_AS_OF.isoformat(),
-            "horizon_months": 3,
-        },
-    )
-    assert fc_oil_resp.status_code == 200
-    fc_oil = fc_oil_resp.json()
-
-    fc_short_resp = client.post(
-        "/api/forecast",
-        json={
-            "sku": "DEMO-SHORT",
-            "location": "DEMO-MS-02",
-            "as_of": TEST_DEMO_AS_OF.isoformat(),
-            "horizon_months": 3,
-        },
-    )
+    sc_short = get_demo_scenario("short-history")
+    fc_short_resp = client.request(sc_short.method, sc_short.path, json=sc_short.json_body)
     assert fc_short_resp.status_code == 200
     fc_short = fc_short_resp.json()
 
-    alerts_resp = client.get(
-        "/api/alerts",
-        params={"as_of": TEST_DEMO_AS_OF.isoformat(), "limit": 100},
-    )
+    sc_alerts = get_demo_scenario("lead-time-stockout")
+    alerts_resp = client.request(sc_alerts.method, sc_alerts.path, params=sc_alerts.params)
     assert alerts_resp.status_code == 200
     alerts_items = alerts_resp.json()["items"]
 
-    plan_resp = client.post(
-        "/api/procurement/plan",
-        json={"as_of": TEST_DEMO_AS_OF.isoformat(), "horizon_months": 3},
-    )
+    sc_oil = get_demo_scenario("oil-quarter-plan")
+    plan_resp = client.request(sc_oil.method, sc_oil.path, json=sc_oil.json_body)
     assert plan_resp.status_code == 200
     plan = plan_resp.json()
     plan_items = plan["items"]
     existing_orders = plan["existing_orders"]
+
+    # Прогноз для DEMO-OIL на основе параметров сценария и его селектора
+    fc_oil_resp = client.post(
+        "/api/forecast",
+        json={**sc_oil.selector, **sc_oil.json_body},
+    )
+    assert fc_oil_resp.status_code == 200
+    fc_oil = fc_oil_resp.json()
+
+    # Сверка эталонных полей остатка масла (DEMO-OIL)
+    oil_stock = next(
+        s
+        for s in stock_items
+        if s["sku"] == sc_oil.selector["sku"] and s["location"] == sc_oil.selector["location"]
+    )
+    assert Decimal(oil_stock["current_stock"]) == sc_oil.stock_expected["current_stock"]
+    assert Decimal(oil_stock["available_stock"]) == sc_oil.stock_expected["available_stock"]
+    assert Decimal(oil_stock["expired_stock"]) == sc_oil.stock_expected["expired_stock"]
+    assert (
+        Decimal(oil_stock["average_daily_consumption"])
+        == sc_oil.stock_expected["average_daily_consumption"]
+    )
+    assert Decimal(oil_stock["days_of_stock"]) == sc_oil.stock_expected["days_of_stock"]
+    assert (
+        oil_stock["nearest_expiry_date"] == sc_oil.stock_expected["nearest_expiry_date"].isoformat()
+    )
 
     # Сверка девяти сценариев каталога
     verify_oil_scenario(plan_items, plan["budget"], fc_oil)
@@ -158,7 +162,9 @@ def test_demo_data_api_repeated_preparation_determinism(
     # 1. Первая подготовка
     prepare_demo_data(db_session, as_of=TEST_DEMO_AS_OF)
 
-    stock_1 = client.get("/api/stock", params={"limit": 100}).json()["items"]
+    stock_1 = client.get(
+        "/api/stock", params={"limit": 100, "as_of": TEST_DEMO_AS_OF.isoformat()}
+    ).json()["items"]
     plan_1 = client.post(
         "/api/procurement/plan",
         json={"as_of": TEST_DEMO_AS_OF.isoformat(), "horizon_months": 3},
@@ -171,7 +177,9 @@ def test_demo_data_api_repeated_preparation_determinism(
     # 2. Повторная подготовка с --replace
     prepare_demo_data(db_session, as_of=TEST_DEMO_AS_OF, replace=True)
 
-    stock_2 = client.get("/api/stock", params={"limit": 100}).json()["items"]
+    stock_2 = client.get(
+        "/api/stock", params={"limit": 100, "as_of": TEST_DEMO_AS_OF.isoformat()}
+    ).json()["items"]
     plan_2 = client.post(
         "/api/procurement/plan",
         json={"as_of": TEST_DEMO_AS_OF.isoformat(), "horizon_months": 3},

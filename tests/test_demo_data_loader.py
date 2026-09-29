@@ -222,3 +222,30 @@ def test_prepare_demo_data_missing_base_movement(db_session: Session) -> None:
 
     with pytest.raises(DemoDataError, match="отсутствует опорное движение"):
         prepare_demo_data(db_session, as_of=TEST_AS_OF)
+
+
+def test_replace_demo_data_conflicting_demo_keys_rejected(db_session: Session) -> None:
+    """Отказ в пересборке при наличии стороннего/конфликтующего объекта с префиксом DEMO-."""
+    initial_as_of = date(2026, 9, 1)
+
+    # 1. Создаем начальный корректный демонабор
+    mode, _ = prepare_demo_data(db_session, as_of=initial_as_of)
+    assert mode == "created"
+
+    # 2. Внедряем сторонний конфликтующий объект с префиксом DEMO- (лишний товар)
+    conflict_item = Item(
+        sku="DEMO-CONFLICT-EXTRA",
+        name="Конфликтующий тестовый товар",
+        category="Конфликт",
+        unit="шт",
+    )
+    db_session.add(conflict_item)
+    db_session.commit()
+
+    # 3. Пересборка с replace=True должна отклоняться до пересборки из-за конфликтующего ключа
+    with pytest.raises(DemoDataError) as exc_info:
+        prepare_demo_data(db_session, as_of=TEST_AS_OF, replace=True)
+
+    assert "DEMO-CONFLICT-EXTRA" in str(exc_info.value)
+    # Конфликтующий объект не должен быть удален незавершенной пересборкой
+    assert db_session.query(Item).filter(Item.sku == "DEMO-CONFLICT-EXTRA").first() is not None

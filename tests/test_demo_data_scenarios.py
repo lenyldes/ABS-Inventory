@@ -66,10 +66,8 @@ def test_demo_scenarios_four_apis_covered() -> None:
         assert sc.method in {"GET", "POST"}
         if sc.method == "GET":
             assert sc.params is not None
-            # Для GET /api/stock as_of не поддерживается эндпоинтом, но есть limit
-            if sc.path != "/api/stock":
-                assert sc.params.get("as_of") == "2026-09-29"
-            else:
+            assert sc.params.get("as_of") == "2026-09-29"
+            if sc.path == "/api/stock":
                 assert sc.params.get("limit") == 100
         elif sc.method == "POST":
             assert sc.json_body is not None
